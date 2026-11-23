@@ -80,3 +80,15 @@ def test_all_spectral_modes_render_cleanly(tmp_path: Path):
         assert frame.dtype == np.uint8
         assert np.isfinite(render_out.depth_m).all()
         assert frame.std() > 1.0, f"Mode {mode} rendered a flat image"
+
+
+def test_geofence_sampling_respects_radius():
+    from sat2uav.geo_fetcher import sample_point_in_geofence
+
+    rng = np.random.default_rng(99)
+    for _ in range(50):
+        lat, lon, dist_km = sample_point_in_geofence(38.5733, -109.5498, 300.0, rng)
+        assert 0.0 <= dist_km <= 300.01
+        assert 35.0 <= lat <= 42.0
+        assert -114.0 <= lon <= -105.0
+

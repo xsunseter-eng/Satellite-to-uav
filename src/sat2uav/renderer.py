@@ -79,6 +79,24 @@ class DSMCameraRenderer:
             np.float32
         )
 
+        # Ray-march depth on a sub-grid for HD/4K (4x-16x faster) while sampling
+        # textures at 100% native full resolution.
+        if params.width >= 3000:
+            self.ray_scale = 0.25
+        elif params.width >= 1000:
+            self.ray_scale = 0.5
+        else:
+            self.ray_scale = 1.0
+
+        if self.ray_scale < 1.0:
+            ws = max(64, int(round(params.width * self.ray_scale)))
+            hs = max(64, int(round(params.height * self.ray_scale)))
+            sub = cv2.resize(self.world_rays, (ws, hs), interpolation=cv2.INTER_LINEAR)
+            sub /= np.linalg.norm(sub, axis=-1, keepdims=True) + 1e-8
+            self.march_rays_world = sub.astype(np.float32)
+        else:
+            self.march_rays_world = self.world_rays
+
         # Project sun vector into camera frame to check for lens flare alignment (#15)
         sun_cam = self.rot_c2w.T @ self.sun_vec
         if sun_cam[2] > 0.05:
@@ -165,24 +183,31 @@ class DSMCameraRenderer:
         Returns (hit_col, hit_row, depth_m, sky_mask).
         """
         sc = self.scene
-        dx = self.world_rays[:, :, 0]
-        dy = self.world_rays[:, :, 1]
-        dz = self.world_rays[:, :, 2]
+        dx_full = self.world_rays[:, :, 0]
+        dy_full = self.world_rays[:, :, 1]
+        dz_full = self.world_rays[:, :, 2]
 
-        h_out, w_out = dz.shape
-        sky_mask = dz >= -0.015
+        h_full, w_full = dz_full.shape
+        sky_mask_full = dz_full >= -0.015
 
         # Fast flat-plane analytic solution when DSM has negligible relief
         if not sc.has_real_dsm or (sc.z_max_m - sc.z_min_m) < 0.5:
-            safe_dz = np.where(sky_mask, -1.0, dz)
+            safe_dz = np.where(sky_mask_full, -1.0, dz_full)
             t_hit = np.maximum(1.0, (sc.z_min_m - cam_z) / safe_dz)
-            t_hit = np.where(sky_mask, 50000.0, t_hit)
-            hx = cam_x + t_hit * dx
-            hy = cam_y + t_hit * dy
+            t_hit = np.where(sky_mask_full, 50000.0, t_hit)
+            hx = cam_x + t_hit * dx_full
+            hy = cam_y + t_hit * dy_full
             col, row = sc.world_to_pixel(hx, hy)
             col = np.clip(col, 0.0, sc.width_px - 1.0).astype(np.float32)
             row = np.clip(row, 0.0, sc.height_px - 1.0).astype(np.float32)
-            return col, row, t_hit.astype(np.float32), sky_mask
+            return col, row, t_hit.astype(np.float32), sky_mask_full
+
+        # March rays on march_rays_world (sub-grid for HD/4K)
+        dx = self.march_rays_world[:, :, 0]
+        dy = self.march_rays_world[:, :, 1]
+        dz = self.march_rays_world[:, :, 2]
+        h_out, w_out = dz.shape
+        sky_mask = dz >= -0.015
 
         # Compute bounding-slab intersection [z_min, z_max] for downward rays
         safe_dz = np.where(sky_mask, -1.0, dz)
@@ -239,13 +264,20 @@ class DSMCameraRenderer:
             t_hi = np.where(below, t_mid, t_hi)
             t_lo = np.where(below, t_lo, t_mid)
 
-        t_final = np.where(sky_mask, 50000.0, 0.5 * (t_lo + t_hi)).astype(np.float32)
-        hx = cam_x + t_final * dx
-        hy = cam_y + t_final * dy
+        # Keep finite t_exit on sky rays before upsampling to prevent horizon bleed
+        t_sub = np.where(sky_mask, t_exit, 0.5 * (t_lo + t_hi)).astype(np.float32)
+        if self.ray_scale < 1.0:
+            t_full = cv2.resize(t_sub, (w_full, h_full), interpolation=cv2.INTER_LINEAR)
+        else:
+            t_full = t_sub
+
+        t_final = np.where(sky_mask_full, 50000.0, t_full).astype(np.float32)
+        hx = cam_x + t_final * dx_full
+        hy = cam_y + t_final * dy_full
 
         col = np.clip((hx - x_min) * inv_gsd, 0.0, w_dsm - 1.0).astype(np.float32)
         row = np.clip((y_max - hy) * inv_gsd, 0.0, h_dsm - 1.0).astype(np.float32)
-        return col, row, t_final, sky_mask
+        return col, row, t_final, sky_mask_full
 
     def render_frame(self, pose: FramePose) -> RenderOutput:
         """Render a single 3D camera frame at the given UAV pose."""
