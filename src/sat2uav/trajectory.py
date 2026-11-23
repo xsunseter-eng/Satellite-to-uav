@@ -33,29 +33,82 @@ class FramePose:
         return asdict(self)
 
 
+def _frustum_corners_inside(
+    x: float,
+    y: float,
+    altitude_agl_m: float,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+    aspect: float,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+) -> bool:
+    """Verify that the camera ground footprint (near & far corners) stays inside scene bounds."""
+    if not (xmin <= x <= xmax and ymin <= y <= ymax):
+        return False
+
+    hfov_rad = math.radians(fov_deg)
+    vfov_rad = 2.0 * math.atan(math.tan(0.5 * hfov_rad) / max(aspect, 0.5))
+    pitch_rad = math.radians(pitch_deg)  # negative = downward
+
+    # Top-of-frame ray elevation angle (closest to horizon)
+    top_angle = pitch_rad + 0.5 * vfov_rad
+    bot_angle = pitch_rad - 0.5 * vfov_rad
+
+    # If top ray is looking at/above horizon, require large forward ground buffer (2.5 * alt)
+    if top_angle >= -math.radians(8.0):
+        far_dist = min(2200.0, altitude_agl_m * 4.5)
+    else:
+        far_dist = min(2200.0, altitude_agl_m / math.tan(-top_angle))
+
+    if bot_angle >= -math.radians(8.0):
+        near_dist = altitude_agl_m * 0.5
+    else:
+        near_dist = altitude_agl_m / math.tan(-bot_angle)
+
+    yaw_rad = math.radians(yaw_deg)
+    fx, fy = math.sin(yaw_rad), math.cos(yaw_rad)
+    rx, ry = math.cos(yaw_rad), -math.sin(yaw_rad)
+
+    # Extra 15% margin for radial lens distortion at corners
+    tan_half_h = math.tan(0.5 * hfov_rad) * 1.15
+    far_half_w = math.hypot(altitude_agl_m, far_dist) * tan_half_h
+    near_half_w = math.hypot(altitude_agl_m, near_dist) * tan_half_h
+
+    for dist, half_w in ((near_dist, near_half_w), (far_dist, far_half_w)):
+        for side in (-1.0, 0.0, 1.0):
+            px = x + dist * fx + side * half_w * rx
+            py = y + dist * fy + side * half_w * ry
+            if not (xmin <= px <= xmax and ymin <= py <= ymax):
+                return False
+    return True
+
+
 def sample_valid_flight(
     scene: SceneBundle,
     cfg: GenerationConfig,
     rng: np.random.Generator,
     video_index: int,
-    max_attempts: int = 250,
+    max_attempts: int = 400,
 ) -> tuple[VideoSampleParams, list[FramePose]]:
     """Sample a randomized flight starting within X km of origin whose path and
-    oblique camera look-ahead stay safely inside the loaded scene boundaries.
+    full 3D oblique camera frustum stay safely inside the loaded scene boundaries.
     """
-    margin = min(
-        cfg.flight.boundary_margin_m,
-        0.18 * min(scene.x_max_m - scene.x_min_m, scene.y_max_m - scene.y_min_m),
-    )
-    safe_xmin = scene.x_min_m + margin
-    safe_xmax = scene.x_max_m - margin
-    safe_ymin = scene.y_min_m + margin
-    safe_ymax = scene.y_max_m - margin
+    scene_w = scene.x_max_m - scene.x_min_m
+    scene_h = scene.y_max_m - scene.y_min_m
+    edge_pad = min(25.0, 0.04 * min(scene_w, scene_h))
+    b_xmin = scene.x_min_m + edge_pad
+    b_xmax = scene.x_max_m - edge_pad
+    b_ymin = scene.y_min_m + edge_pad
+    b_ymax = scene.y_max_m - edge_pad
 
-    max_scene_r = 0.45 * min(safe_xmax - safe_xmin, safe_ymax - safe_ymin)
-    max_offset_m = min(cfg.flight.max_start_offset_km * 1000.0, max(50.0, max_scene_r))
+    max_scene_r = 0.45 * min(b_xmax - b_xmin, b_ymax - b_ymin)
+    max_offset_m = min(cfg.flight.max_start_offset_km * 1000.0, max(20.0, max_scene_r))
 
-    best_choice: tuple[float, float, float, float, float, float] | None = None
+    best_choice: tuple[float, float, float, float, float, float, float, float, tuple[int, int]] | None = None
 
     for _ in range(max_attempts):
         # Uniform disk sampling around scene origin (sqrt(u) for area uniformity)
@@ -67,44 +120,42 @@ def sample_valid_flight(
         yaw_deg = float(rng.uniform(*cfg.flight.yaw_deg_range)) % 360.0
         speed_mps = float(rng.uniform(*cfg.flight.speed_mps_range))
         altitude_agl_m = float(rng.uniform(*cfg.flight.altitude_agl_m_range))
+        fov_deg = float(rng.uniform(*cfg.camera.fov_deg_range))
+        pitch_deg = float(rng.uniform(*cfg.camera.pitch_deg_range))
+        res = cfg.camera.resolutions[int(rng.integers(0, len(cfg.camera.resolutions)))]
+        aspect = res[0] / float(res[1])
 
         yaw_rad = math.radians(yaw_deg)
-        vx = speed_mps * math.sin(yaw_rad)  # +East
-        vy = speed_mps * math.cos(yaw_rad)  # +North
+        ex = sx + speed_mps * math.sin(yaw_rad) * cfg.duration_sec
+        ey = sy + speed_mps * math.cos(yaw_rad) * cfg.duration_sec
 
-        ex = sx + vx * cfg.duration_sec
-        ey = sy + vy * cfg.duration_sec
-
-        # Also check modest forward look-ahead so oblique pitch stays on texture
-        look_ahead = altitude_agl_m * 0.65
-        lx = ex + look_ahead * math.sin(yaw_rad)
-        ly = ey + look_ahead * math.cos(yaw_rad)
-
-        if (
-            safe_xmin <= sx <= safe_xmax
-            and safe_ymin <= sy <= safe_ymax
-            and safe_xmin <= ex <= safe_xmax
-            and safe_ymin <= ey <= safe_ymax
-            and safe_xmin <= lx <= safe_xmax
-            and safe_ymin <= ly <= safe_ymax
+        if _frustum_corners_inside(
+            sx, sy, altitude_agl_m, yaw_deg, pitch_deg, fov_deg, aspect,
+            b_xmin, b_xmax, b_ymin, b_ymax,
+        ) and _frustum_corners_inside(
+            ex, ey, altitude_agl_m, yaw_deg, pitch_deg, fov_deg, aspect,
+            b_xmin, b_xmax, b_ymin, b_ymax,
         ):
-            best_choice = (sx, sy, r, yaw_deg, speed_mps, altitude_agl_m)
+            best_choice = (sx, sy, r, yaw_deg, speed_mps, altitude_agl_m, fov_deg, pitch_deg, res)
             break
 
     if best_choice is None:
-        # Fallback: start near origin and fly inward along the safest direction
+        # Fallback for compact scenes: center near origin with steeper pitch to stay strictly in-bounds
         sx, sy = scene.origin_x_m, scene.origin_y_m
         r = 0.0
         yaw_deg = float(rng.uniform(*cfg.flight.yaw_deg_range)) % 360.0
-        max_dist = 0.4 * min(safe_xmax - safe_xmin, safe_ymax - safe_ymin)
+        res = cfg.camera.resolutions[int(rng.integers(0, len(cfg.camera.resolutions)))]
+        fov_deg = min(float(rng.uniform(*cfg.camera.fov_deg_range)), 68.0)
+        pitch_deg = min(float(rng.uniform(*cfg.camera.pitch_deg_range)), -62.0)
+        max_span = min(scene_w, scene_h)
+        altitude_agl_m = min(float(rng.uniform(*cfg.flight.altitude_agl_m_range)), max_span * 0.22)
         speed_mps = min(
             float(rng.uniform(*cfg.flight.speed_mps_range)),
-            max(2.0, max_dist / max(cfg.duration_sec, 0.5)),
+            max(2.0, (max_span * 0.18) / max(cfg.duration_sec, 0.5)),
         )
-        altitude_agl_m = float(rng.uniform(*cfg.flight.altitude_agl_m_range))
-        best_choice = (sx, sy, r, yaw_deg, speed_mps, altitude_agl_m)
+        best_choice = (sx, sy, r, yaw_deg, speed_mps, altitude_agl_m, fov_deg, pitch_deg, res)
 
-    sx, sy, offset_m, yaw_deg, speed_mps, altitude_agl_m = best_choice
+    sx, sy, offset_m, yaw_deg, speed_mps, altitude_agl_m, fov_deg, pitch_deg, res = best_choice
     params = sample_video_params(
         cfg=cfg,
         rng=rng,
@@ -116,6 +167,10 @@ def sample_valid_flight(
         speed_mps=speed_mps,
         altitude_agl_m=altitude_agl_m,
     )
+    # Apply the exact frustum-verified camera geometry
+    params.fov_deg = float(fov_deg)
+    params.pitch_deg = float(pitch_deg)
+    params.width, params.height = int(res[0]), int(res[1])
 
     num_frames = max(1, int(round(params.duration_sec * params.fps)))
     yaw_rad = math.radians(params.yaw_deg)

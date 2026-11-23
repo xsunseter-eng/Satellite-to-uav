@@ -17,7 +17,9 @@ Confirmed all 6 land-focused target regions (`R1–R4` USA, `R5` Spain IGN PNOA,
   - `effects.py`: Physical Beer-Lambert atmospheric haze (#12), sun glare/lens flare & specular glint (#15), Kelvin color temperature & WB (#16), velocity-coupled motion blur & rolling shutter (#6), stateful auto-exposure & DR clipping (#8), optical ISO/shot noise & thermal FPN (#9), plus procedural lens cracks & water marks/droplets.
   - `video_writer.py`: Direct FFmpeg H.264 MP4 pipe writer at varying native resolutions (#20) + JSON telemetry/parameter metadata export.
   - `cli.py`: `sat2uav` CLI (`list-regions`, `fetch`, `generate`, `run-region`).
-- Added default generation config `configs/default_generation.yaml` and automated test suite `tests/test_pipeline.py` (3/3 passing).
+- Added default generation config `configs/default_generation.yaml` and automated test suite `tests/test_pipeline.py` (4/4 passing).
+- Verified live end-to-end ingestion & rendering on **R4 Moab / Canyonlands, UT** (`NAIP` 4-band RGB+NIR + `USGS 3DEP Seamless` DSM, 2000×2000 px, 1214.6–1417.4 m elevation relief).
+- Added HD/4K sub-grid ray-marching depth upsampling (`4x–16x` faster ray-march while preserving full native texture resolution), exact 3D oblique frustum boundary verification in `trajectory.py` (preventing raster border stretching), and balanced auto-exposure targeting for `night_vision` mode.
 
 ## Next Steps
 - [ ] Review rendered live demo videos and inspect sample frames for visual realism.

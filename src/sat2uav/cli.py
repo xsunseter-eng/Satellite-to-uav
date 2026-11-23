@@ -153,7 +153,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--region", required=True, help="Region ID (e.g. R4_MOAB_CANYONLANDS_UT)")
     p_run.add_argument("--out", required=True, help="Output run directory")
     p_run.add_argument("--config", default=None, help="Path to YAML generation config")
-    p_run.add_argument("--size-km", type=float, default=2.5, help="Corridor box size in km")
+    p_run.add_argument("--size-km", type=float, default=3.5, help="Corridor box size in km")
     p_run.add_argument("--gsd", type=float, default=1.0, help="Corridor GSD in meters/pixel")
     p_run.add_argument("--num-videos", type=int, default=None)
     p_run.add_argument("--duration", type=float, default=None)

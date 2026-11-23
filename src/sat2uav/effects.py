@@ -347,8 +347,13 @@ class EffectsPipeline:
         luma = 0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]
         mean_luma = float(np.clip(np.mean(luma), 0.04, 0.95))
 
-        # Night modes target lower brightness so night doesn't wash out into daytime
-        target = p.ae_target_luma * (0.45 if (p.is_night and p.spectral_mode == "rgb") else 1.0)
+        # Night & NVG modes target lower luma so highlights don't clip into neon/daytime
+        if p.spectral_mode == "night_vision":
+            target = p.ae_target_luma * 0.62
+        elif p.is_night and p.spectral_mode == "rgb":
+            target = p.ae_target_luma * 0.45
+        else:
+            target = p.ae_target_luma
         desired_gain = float(np.clip(target / mean_luma, 0.45, 2.4))
 
         if not self.ae_state.initialized:
