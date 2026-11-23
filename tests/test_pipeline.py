@@ -24,7 +24,7 @@ from sat2uav.trajectory import sample_valid_flight
 
 def test_regions_registry_confirmed_and_geofence_valid():
     regions = load_regions_registry()
-    assert len(regions) == 6
+    assert len(regions) == 8
     for rid, reg in regions.items():
         assert reg["status"] == "confirmed", f"{rid} should be confirmed"
         r = reg["geofence_radius_km"]

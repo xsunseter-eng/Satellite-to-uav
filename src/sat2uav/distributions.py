@@ -97,6 +97,20 @@ REGION_CLIMATOLOGY: dict[str, RegionClimatology] = {
         adverse_range_km=(0.8, 3.0),
         biome_label="Temperate oceanic basin (frequent radiation fog, mist, & urban haze)",
     ),
+    "R7_CHINA_UAV_VISLOC": RegionClimatology(
+        base_visibility_km=13.0,
+        volatility_factor=1.30,
+        adverse_prob=0.14,
+        adverse_range_km=(1.0, 3.5),
+        biome_label="Humid subtropical Qinling-Daba mountain valleys (Hubei, China)",
+    ),
+    "R8_KENYA_KABR_MPALA": RegionClimatology(
+        base_visibility_km=22.0,
+        volatility_factor=0.85,
+        adverse_prob=0.08,
+        adverse_range_km=(1.5, 4.5),
+        biome_label="Equatorial highland semi-arid savanna (Laikipia Plateau, Kenya)",
+    ),
 }
 
 DEFAULT_CLIMATOLOGY = RegionClimatology(

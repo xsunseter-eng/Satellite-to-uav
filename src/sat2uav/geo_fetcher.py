@@ -132,6 +132,80 @@ def _fetch_stac_mosaic_to_grid(
     return mosaic, used_ids
 
 
+def _lonlat_to_tile_xy(lon: float, lat: float, zoom: int) -> tuple[int, int]:
+    lat_rad = math.radians(np.clip(lat, -85.0511, 85.0511))
+    n = 2 ** zoom
+    x = int((lon + 180.0) / 360.0 * n)
+    y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    return x, y
+
+
+def _tile_xy_to_3857_bounds(x: int, y: int, zoom: int) -> tuple[float, float, float, float]:
+    n = 2 ** zoom
+    origin_shift = 20037508.342789244
+    tile_span = (2.0 * origin_shift) / n
+    minx = -origin_shift + x * tile_span
+    maxx = minx + tile_span
+    maxy = origin_shift - y * tile_span
+    miny = maxy - tile_span
+    return minx, miny, maxx, maxy
+
+
+def _fetch_esri_imagery_to_grid(
+    bbox_wgs84: list[float],
+    dst_crs: str,
+    dst_transform,
+    width: int,
+    height: int,
+    gsd_m: float,
+) -> tuple[np.ndarray, list[str]]:
+    """Fetch public ESRI World Imagery RGB tiles and reproject onto target metric UTM grid."""
+    from io import BytesIO
+
+    lon_min, lat_min, lon_max, lat_max = bbox_wgs84
+    mid_lat = 0.5 * (lat_min + lat_max)
+    # Choose zoom level matching requested GSD (zoom 16 ~ 2.0m, zoom 17 ~ 1.0m at equator)
+    zoom = 17 if gsd_m <= 1.4 else 16
+    tx0, ty0 = _lonlat_to_tile_xy(lon_min, lat_max, zoom)
+    tx1, ty1 = _lonlat_to_tile_xy(lon_max, lat_min, zoom)
+    # Cap tile grid to keep requests fast and polite (max 14x14 tiles)
+    while ((tx1 - tx0 + 1) > 14 or (ty1 - ty0 + 1) > 14) and zoom > 13:
+        zoom -= 1
+        tx0, ty0 = _lonlat_to_tile_xy(lon_min, lat_max, zoom)
+        tx1, ty1 = _lonlat_to_tile_xy(lon_max, lat_min, zoom)
+
+    cols = tx1 - tx0 + 1
+    rows = ty1 - ty0 + 1
+    canvas = np.zeros((rows * 256, cols * 256, 3), dtype=np.uint8)
+
+    sess = requests.Session()
+    sess.headers["User-Agent"] = "sat2uav/0.1 (research geospatial synthetic UAV pipeline)"
+    for r_i, ty in enumerate(range(ty0, ty1 + 1)):
+        for c_i, tx in enumerate(range(tx0, tx1 + 1)):
+            url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{ty}/{tx}"
+            resp = sess.get(url, timeout=30)
+            resp.raise_for_status()
+            tile_img = np.asarray(Image.open(BytesIO(resp.content)).convert("RGB"), dtype=np.uint8)
+            canvas[r_i * 256 : (r_i + 1) * 256, c_i * 256 : (c_i + 1) * 256] = tile_img
+
+    b_minx, _, _, b_maxy = _tile_xy_to_3857_bounds(tx0, ty0, zoom)
+    _, b_miny, b_maxx, _ = _tile_xy_to_3857_bounds(tx1, ty1, zoom)
+    src_transform = from_bounds(b_minx, b_miny, b_maxx, b_maxy, cols * 256, rows * 256)
+
+    dst_rgb = np.zeros((3, height, width), dtype=np.uint8)
+    for b in range(3):
+        reproject(
+            source=canvas[:, :, b],
+            destination=dst_rgb[b],
+            src_transform=src_transform,
+            src_crs="EPSG:3857",
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.bilinear,
+        )
+    return dst_rgb, [f"esri_world_imagery_z{zoom}_{cols}x{rows}_tiles"]
+
+
 def _fetch_wms_image(
     url: str,
     layer: str,
@@ -323,8 +397,63 @@ def fetch_scene_corridor(
             dtype=np.float32,
         )
         dsm_collection = "cop-dem-glo-30"
+    elif country_u in ("CHINA", "KENYA", "GLOBAL"):
+        # High-resolution global RGB via ESRI World Imagery + real Sentinel-2 B08 NIR + Copernicus GLO-30 DEM
+        dst_rgb, imagery_sources = _fetch_esri_imagery_to_grid(
+            bbox_wgs84=bbox_wgs84,
+            dst_crs=dst_crs,
+            dst_transform=dst_transform,
+            width=width,
+            height=height,
+            gsd_m=gsd_m,
+        )
+        # Fuse real Sentinel-2 L2A 10m NIR (B08) from Planetary Computer when available
+        try:
+            s2_nir, s2_ids = _fetch_stac_mosaic_to_grid(
+                catalog=catalog,
+                collection="sentinel-2-l2a",
+                asset_key="B08",
+                bbox_wgs84=bbox_wgs84,
+                dst_crs=dst_crs,
+                dst_transform=dst_transform,
+                width=width,
+                height=height,
+                num_bands=1,
+                dtype=np.float32,
+                resampling=Resampling.bilinear,
+                max_items=6,
+            )
+            nir_f = np.nan_to_num(s2_nir[0], nan=2000.0)
+            p98 = float(np.percentile(nir_f, 98.0))
+            nir_u8 = np.clip((nir_f / max(p98, 2500.0)) * 235.0, 0, 255).astype(np.uint8)
+            imagery_sources.extend([f"s2_nir:{i}" for i in s2_ids[:2]])
+            imagery_collection = "esri-world-imagery+sentinel2-b08-nir"
+        except Exception:
+            nir_u8 = np.clip(
+                0.55 * dst_rgb[1].astype(np.float32)
+                + 0.30 * dst_rgb[0].astype(np.float32)
+                + 0.15 * dst_rgb[2].astype(np.float32),
+                0,
+                255,
+            ).astype(np.uint8)
+            imagery_collection = "esri-world-imagery"
+
+        imagery = np.stack([dst_rgb[0], dst_rgb[1], dst_rgb[2], nir_u8], axis=0)
+        dsm, dsm_sources = _fetch_stac_mosaic_to_grid(
+            catalog=catalog,
+            collection="cop-dem-glo-30",
+            asset_key="data",
+            bbox_wgs84=bbox_wgs84,
+            dst_crs=dst_crs,
+            dst_transform=dst_transform,
+            width=width,
+            height=height,
+            num_bands=1,
+            dtype=np.float32,
+        )
+        dsm_collection = "cop-dem-glo-30"
     else:
-        raise ValueError(f"Unsupported country '{country}'. Supported: USA, Spain, France.")
+        raise ValueError(f"Unsupported country '{country}'. Supported: USA, Spain, France, China, Kenya, Global.")
 
     # Write standardized imagery.tif (4-band RGB+NIR)
     img_out = out_dir / "imagery.tif"

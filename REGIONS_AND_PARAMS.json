@@ -91,6 +91,34 @@
       "terrain_difficulty": ["dense_european_urban", "industrial_river_ports_seine", "rail_logistics_hubs", "agricultural_forest_mix"],
       "primary_datasets": ["France_IGN_BD_ORTHO_20cm_RGB_NIR", "France_IGN_LiDAR_HD_50cm_DSM"],
       "auxiliary_datasets": ["Sentinel2", "SDGSAT1", "ECOSTRESS"]
+    },
+    {
+      "id": "R7_CHINA_UAV_VISLOC",
+      "name": "Shiyan / Zhushan Mountain Valleys, Hubei (China — UAV-VisLoc Real Test Set)",
+      "country": "China",
+      "status": "confirmed",
+      "origin": {
+        "lat": 32.3602,
+        "lon": 109.6466
+      },
+      "geofence_radius_km": 200,
+      "terrain_difficulty": ["subtropical_mountain_valleys", "terraced_agriculture", "towns_rivers", "real_uav_paired_test"],
+      "primary_datasets": ["ESRI_World_Imagery_1m_RGB", "Sentinel2_B08_NIR", "Copernicus_DEM_GLO30"],
+      "auxiliary_datasets": ["UAV_VisLoc_Real_Drone_06", "SDGSAT1", "ECOSTRESS"]
+    },
+    {
+      "id": "R8_KENYA_KABR_MPALA",
+      "name": "Mpala Research Centre, Laikipia Plateau (Kenya — KABR Real DJI Test Set)",
+      "country": "Kenya",
+      "status": "confirmed",
+      "origin": {
+        "lat": 0.3839,
+        "lon": 36.8806
+      },
+      "geofence_radius_km": 180,
+      "terrain_difficulty": ["equatorial_highland_savanna", "acacia_scrub_bushland", "dirt_tracks_rivers", "real_uav_paired_test"],
+      "primary_datasets": ["ESRI_World_Imagery_1m_RGB", "Sentinel2_B08_NIR", "Copernicus_DEM_GLO30"],
+      "auxiliary_datasets": ["KABR_Real_DJI_MP4_SRT_Telemetry", "SDGSAT1", "ECOSTRESS"]
     }
   ],
   "cancelled_regions": [
@@ -105,15 +133,17 @@
   ],
   "variation_parameters": {
     "output_specification": {
-      "videos_per_region_N": 100,
+      "videos_per_region_N": 110,
+      "clean_videos_per_region": 100,
+      "defect_crack_or_droplet_videos_per_region": 10,
       "duration_sec": 10.0,
       "fps": 30,
       "keyframe_interval_frames": 10,
       "keyframe_format": "png",
       "metadata_format": "xml",
       "equal_resolutions_no_4k": ["640x360", "854x480", "1280x720", "1920x1080"],
-      "primary_render_engine": "gpu_opengl_raymarch",
-      "comparison_render_engines": ["gpu_opengl_mesh", "cpu_raymarch"]
+      "primary_render_engine": "gpu_opengl_raymarch_fast",
+      "comparison_render_engines": ["gpu_opengl_raymarch", "gpu_opengl_mesh", "cpu_raymarch"]
     },
     "flight_kinematics": [
       "random_start_position_within_full_region_geofence_radius_X",

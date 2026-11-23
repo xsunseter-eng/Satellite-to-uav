@@ -41,6 +41,8 @@ All regions enforce a **100–300 km land-focused radius** with public sub-meter
 | **R4** | Moab / Canyonlands, UT (USA) | Confirmed | `38.5733°N, 109.5498°W` | 300 km | Steep canyons, mesas, high relief | NAIP + USGS 3DEP + ECOSTRESS |
 | **R5** | Central Spain: Madrid–Toledo–La Mancha (Spain) | Confirmed | `39.9500°N, 3.6500°W` | 200 km | Arid plateau, low-contrast urban + metro | **IGN PNOA** (RGB+NIR + LiDAR) + SDGSAT-1 |
 | **R6** | Paris–Loire Basin: Orléans–Paris (France) | Confirmed | `47.9000°N, 2.0000°E` | 180 km | Dense EU urban, Seine industrial ports, rural | **IGN BD ORTHO** + **LiDAR HD** + SDGSAT-1 |
+| **R7** | Shiyan / Zhushan Valleys, Hubei (China — *UAV-VisLoc*) | Confirmed (Real-UAV Test) | `32.3602°N, 109.6466°E` | 200 km | Subtropical mountain valleys, terraced farms | ESRI World Imagery + Sentinel-2 NIR + Copernicus GLO-30 |
+| **R8** | Mpala Research Centre, Laikipia (Kenya — *KABR*) | Confirmed (Real-UAV Test) | `0.3839°N, 36.8806°E` | 180 km | Equatorial highland acacia savanna | ESRI World Imagery + Sentinel-2 NIR + Copernicus GLO-30 |
 
 ---
 

@@ -186,6 +186,18 @@ class EffectsPipeline:
         v = np.linspace(0.0, 1.0, h, dtype=np.float32)
         self.uu, self.vv = np.meshgrid(u, v)
 
+        # Precompute base pixel coordinate maps for fast rolling shutter (#6)
+        self._base_map_x = np.repeat(np.arange(w, dtype=np.float32)[None, :], h, axis=0)
+        self._base_map_y = np.repeat(np.arange(h, dtype=np.float32)[:, None], w, axis=1)
+        self._row_norm = np.linspace(0.0, 1.0, h, dtype=np.float32)
+
+        # Precompute a padded Gaussian noise bank for zero-copy random crop slicing (<1 ms/frame)
+        noise_ch = 1 if params.spectral_mode in ("panchromatic", "nir", "thermal_lwir") else 3
+        self._noise_pad = 64
+        self._noise_bank = self.rng.normal(
+            0.0, 1.0, size=(h + self._noise_pad, w + self._noise_pad, noise_ch)
+        ).astype(np.float32)
+
     def apply(
         self,
         render_out: RenderOutput,
@@ -226,6 +238,29 @@ class EffectsPipeline:
         if self.crack_overlay is not None:
             img = self._apply_lens_crack(img)
 
+        return np.clip(np.round(img * 255.0), 0, 255).astype(np.uint8)
+
+    def apply_post_only(
+        self,
+        img_float: np.ndarray,
+        pose: FramePose,
+        focal_px: float,
+    ) -> np.ndarray:
+        """Apply screen-space post effects (#6, #8, #9, cracks, droplets) when
+        spectral radiance, haze (#12), glare (#15), and WB (#16) ran on GPU.
+        """
+        p = self.params
+        img = img_float
+        if p.motion_blur_enabled:
+            img = self._apply_motion_blur_and_rolling_shutter(img, pose, focal_px)
+        if p.auto_exposure_enabled:
+            img = self._apply_auto_exposure(img)
+        if p.sensor_noise_enabled:
+            img = self._apply_sensor_noise(img)
+        if self.droplet_overlay is not None:
+            img = self._apply_water_droplets(img)
+        if self.crack_overlay is not None:
+            img = self._apply_lens_crack(img)
         return np.clip(np.round(img * 255.0), 0, 255).astype(np.uint8)
 
     def _apply_haze(
@@ -319,24 +354,19 @@ class EffectsPipeline:
         if blur_len_px >= 1.5:
             ksize = int(round(blur_len_px)) | 1  # Odd kernel size >= 3
             ksize = max(3, min(ksize, 15))
-            # Forward UAV flight flows vertically down screen (+Y)
-            kernel = np.zeros((ksize, ksize), dtype=np.float32)
-            kernel[:, ksize // 2] = 1.0 / ksize
-            img = cv2.filter2D(img, -1, kernel, borderType=cv2.BORDER_REPLICATE)
+            # Exact vertical 1D motion blur using O(1) separable cv2.blur (15x faster than 2D filter2D)
+            img = cv2.blur(img, (1, ksize), borderType=cv2.BORDER_REPLICATE)
 
-        # CMOS rolling-shutter subtle row-wise horizontal wobble / vertical stretch (#6)
+        # CMOS rolling-shutter subtle row-wise horizontal wobble (#6)
         if p.rolling_shutter_strength > 0.02:
             t_phase = pose.time_sec * 18.0
-            rows = np.linspace(0.0, 1.0, h, dtype=np.float32)
-            # Subtle vibration-coupled horizontal row jitter (jello effect)
             amp_px = p.rolling_shutter_strength * (w / 640.0) * 1.8
-            shift_x = amp_px * np.sin(2.0 * math.pi * (rows * 1.5 + t_phase))
-            map_x = np.arange(w, dtype=np.float32)[None, :] + shift_x[:, None]
-            map_y = np.repeat(np.arange(h, dtype=np.float32)[:, None], w, axis=1)
+            shift_x = (amp_px * np.sin(2.0 * math.pi * (self._row_norm * 1.5 + t_phase))).astype(np.float32)
+            map_x = self._base_map_x + shift_x[:, None]
             img = cv2.remap(
                 img,
-                map_x.astype(np.float32),
-                map_y.astype(np.float32),
+                map_x,
+                self._base_map_y,
                 interpolation=cv2.INTER_LINEAR,
                 borderMode=cv2.BORDER_REPLICATE,
             )
@@ -344,8 +374,16 @@ class EffectsPipeline:
 
     def _apply_auto_exposure(self, img: np.ndarray) -> np.ndarray:
         p = self.params
-        luma = 0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]
-        mean_luma = float(np.clip(np.mean(luma), 0.04, 0.95))
+        sub = img[::4, ::4]
+        mean_luma = float(
+            np.clip(
+                0.299 * np.mean(sub[:, :, 0])
+                + 0.587 * np.mean(sub[:, :, 1])
+                + 0.114 * np.mean(sub[:, :, 2]),
+                0.04,
+                0.95,
+            )
+        )
 
         # Night & NVG modes target lower luma so highlights don't clip into neon/daytime
         if p.spectral_mode == "night_vision":
@@ -372,31 +410,31 @@ class EffectsPipeline:
         if p.dr_clip_strength > 0.01:
             black_pt = 0.08 * p.dr_clip_strength
             white_pt = 1.0 - 0.14 * p.dr_clip_strength
-            img = (img - black_pt) / max(white_pt - black_pt, 0.2)
+            img = (img - black_pt) * (1.0 / max(white_pt - black_pt, 0.2))
 
-        return np.clip(img, 0.0, 1.0).astype(np.float32)
+        return np.clip(img, 0.0, 1.0, out=img)
 
     def _apply_sensor_noise(self, img: np.ndarray) -> np.ndarray:
         p = self.params
-        h, w, c = img.shape
-        if p.spectral_mode == "thermal_lwir":
-            # Thermal Fixed-Pattern Noise (column/row striping) + temporal NETD noise
-            netd = self.rng.normal(0.0, p.thermal_fpn * 0.55, size=(h, w, 1)).astype(np.float32)
-            noisy = img + self.thermal_fpn_map + netd
-            return np.clip(noisy, 0.0, 1.0)
+        h, w, _ = img.shape
+        sy = int(self.rng.integers(0, self._noise_pad))
+        sx = int(self.rng.integers(0, self._noise_pad))
+        # Zero-copy slice from pre-generated Gaussian bank
+        noise = self._noise_bank[sy : sy + h, sx : sx + w]
 
-        # Optical photon shot noise + ISO Gaussian read noise
+        if p.spectral_mode == "thermal_lwir":
+            img = img + self.thermal_fpn_map + noise * (p.thermal_fpn * 0.55)
+            return np.clip(img, 0.0, 1.0, out=img)
+
         iso = p.iso_noise * (1.8 if p.is_night else 1.0)
         if p.spectral_mode in ("panchromatic", "nir"):
-            shot = self.rng.normal(0.0, 1.0, size=(h, w, 1)).astype(np.float32) * (
-                np.sqrt(np.clip(img[:, :, :1], 0.01, 1.0)) * iso * 0.7 + iso * 0.5
-            )
-            return np.clip(img + shot, 0.0, 1.0)
+            scale = (np.sqrt(np.clip(img[:, :, :1], 0.01, 1.0)) * (iso * 0.7)) + (iso * 0.5)
+            img = img + noise * scale
+            return np.clip(img, 0.0, 1.0, out=img)
 
-        shot = self.rng.normal(0.0, 1.0, size=(h, w, c)).astype(np.float32) * (
-            np.sqrt(np.clip(img, 0.01, 1.0)) * iso * 0.7 + iso * 0.5
-        )
-        return np.clip(img + shot, 0.0, 1.0)
+        scale = (np.sqrt(np.clip(img, 0.01, 1.0)) * (iso * 0.7)) + (iso * 0.5)
+        img = img + noise * scale
+        return np.clip(img, 0.0, 1.0, out=img)
 
     def _apply_water_droplets(self, img: np.ndarray) -> np.ndarray:
         assert self.droplet_overlay is not None

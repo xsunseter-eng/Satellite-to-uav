@@ -10,6 +10,8 @@ venv/
 data/
 raw_data/
 outputs/
+dataset/
+real_footages/
 *.tif
 *.tiff
 *.laz
