@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Geospatial / Large Raw Data & Generated Videos
+data/
+raw_data/
+outputs/
+*.tif
+*.tiff
+*.laz
+*.las
+*.jp2
+*.ecw
+*.mp4
+*.avi
+*.mkv
+
+# Secrets & Local Config
+.env
+*.pem
+*.key
+.DS_Store

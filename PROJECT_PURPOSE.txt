@@ -1,0 +1,96 @@
+================================================================================
+PROJECT PURPOSE: SATELLITE-TO-UAV SYNTHETIC FLIGHT VIDEO GENERATOR
+================================================================================
+
+1. OVERVIEW
+--------------------------------------------------------------------------------
+The purpose of this project is to build a configurable pipeline that generates
+realistic synthetic Unmanned Aerial Vehicle (UAV) flight videos directly from
+standardized public satellite and overhead geospatial data (multispectral/IR
+imagery + aligned 3D Digital Surface Models).
+
+By synthesizing controlled, ground-truth-annotated UAV footage across diverse
+terrains, spectral modalities, camera geometries, lighting conditions, and
+sensor/environmental degradations, this project provides scalable training,
+testing, and benchmarking data for aerial computer vision, visual navigation,
+cross-view geo-localization, and perception robustness.
+
+
+2. CORE FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+2.1 Standardized Input & Origin-Centered Batch Generation
+- Accept a standardized georeferenced data package (GeoTIFF / Cloud-Optimized
+  GeoTIFF [COG] imagery with CRS metadata, multispectral/IR bands, and aligned
+  DSM/DTM elevation layers), streamed/clipped on demand along flight corridors.
+- Take a target geographic origin point and geofence radius (constrained to
+  100 km <= radius <= 300 km, strictly land-focused).
+- Generate N distinct synthetic UAV flight videos per run alongside structured
+  flight telemetry and parameter ground-truth metadata.
+
+2.2 Randomized Flight Kinematics & Trajectories
+For each of the N generated videos, randomize initial flight parameters within
+predetermined, bounded ranges:
+- Starting Position : Randomly sampled within a maximum distance of X km from
+                      the origin point (bounded by the region geofence).
+- Orientation (Yaw) : Randomly sampled initial heading along the yaw axis.
+- Flight Speed      : Randomly sampled from a predetermined [v_min, v_max] range.
+- Flight Altitude   : Randomly sampled from a predetermined [h_min, h_max] range.
+
+2.3 Configurable & Limitable Variation Parameters
+
+[Baseline Variations]
+- Sun Angle / Illumination : Varying solar azimuth & elevation (shadow length
+                             and direction) + day/night relighting priors.
+- Spectral Camera Models   : Virtual sensors covering available spectral bands
+                             (RGB, Panchromatic/Grayscale, NIR, multispectral
+                             composites, and simulated thermal/IR views).
+- Field of View (FoV)      : Varying camera horizontal/vertical FoV angles.
+- Camera Pitch Direction   : Varying gimbal pitch (nadir to oblique forward).
+- Footage Errors           : Synthetic lens/footage defects such as lens cracks
+                             and water marks / droplets.
+
+[Approved Extended Variations (v1)]
+- Motion Blur & Rolling Shutter : Speed/altitude/angular-rate-coupled directional
+                                  blur and CMOS rolling-shutter skew.
+- Optical Lens Distortion       : Radial & tangential distortion (k1, k2, p1, p2)
+                                  emulating wide/telephoto UAV optics.
+- Auto-Exposure & DR Clipping   : Highlight blowout on bright surfaces, shadow
+                                  crushing, and exposure adaptation lag.
+- Sensor Noise Model            : Optical ISO/photon shot noise and thermal/IR
+                                  Fixed-Pattern Noise (FPN) / striping.
+- Atmospheric Haze & Visibility : Distance- and altitude-dependent aerial haze,
+                                  fog, and reduced visibility scattering.
+- Sun Glare & Specular Glint    : Optical lens flare toward the sun and specular
+                                  glint off water, glass, and metallic roofs.
+- Color Temp & White Balance    : Warm/cool illumination shifts and drifting
+                                  camera white balance.
+- Video Output Resolution       : Varying native output resolutions (e.g., 480p,
+                                  720p, 1080p, 4K) without digital zoom crop.
+
+2.4 Multi-Region & Multi-Difficulty Geofence Policy
+- Every target region must satisfy:
+  * Minimum geofence radius : 100 km (smaller coverage regions are rejected)
+  * Maximum geofence radius : 300 km (larger regions are capped at 300 km)
+  * Land-focused origins    : Geofences prioritized for ~100% land coverage
+- Selected / Candidate Regions (see REGIONS_AND_PARAMS.json & SATELLITE_DATASETS.md):
+  [Confirmed US Regions — NAIP + USGS 3DEP + Satellite Priors]
+  1. South Georgia / North Florida (Jacksonville Land-Focused Corridor, USA) — r = 120 km
+  2. Las Vegas, NV (USA) — Urban-to-Desert Edge & Night Contrast             — r = 120 km
+  3. West/Central Mojave Desert, CA (USA) — Feature-Sparse Desert            — r = 110 km
+  4. Moab / Canyonlands, UT (USA) — Steep Canyons & High Relief              — r = 300 km
+
+  [Proposed Non-US Regions — Nationwide Open Sub-Meter RGB+NIR + LiDAR]
+  5. Central Spain: Madrid–Toledo–La Mancha (Spain, IGN PNOA)                — r = 200 km
+     (Arid plateau + low-contrast urban; replaces cancelled Khartoum)
+  6. Paris–Loire Industrial Basin: Orléans–Paris (France, IGN BD ORTHO+HD)   — r = 180 km
+     (European industrial river ports + dense urban; replaces cancelled Rotterdam)
+
+
+3. PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+- README.md               : Repository overview, architecture, and quick reference.
+- PROJECT_PURPOSE.txt     : Project mission, functional goals, and parameters.
+- SATELLITE_DATASETS.md   : Curated public satellite & overhead data catalog.
+- REGIONS_AND_PARAMS.json : Machine-readable regions, geofences, and parameters.
+- update_logs/            : Chronological development and decision logs.

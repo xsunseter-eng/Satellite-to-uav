@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0.0",
+  "updated_at": "2026-11-23",
+  "geofence_policy": {
+    "min_radius_km": 100,
+    "max_radius_km": 300,
+    "land_focused": true,
+    "ingestion_mode": "on_demand_corridor_clipping"
+  },
+  "regions": [
+    {
+      "id": "R1_SE_US_LAND_CORRIDOR",
+      "name": "South Georgia / North Florida (Jacksonville Land-Focused Corridor, USA)",
+      "country": "USA",
+      "status": "confirmed",
+      "origin": {
+        "lat": 31.1500,
+        "lon": -82.8500
+      },
+      "geofence_radius_km": 120,
+      "terrain_difficulty": ["dense_canopy", "wetlands", "bridges_rivers", "suburban_urban_edge"],
+      "primary_datasets": ["USDA_NAIP_4band_RGB_NIR", "USGS_3DEP_1m_LiDAR"],
+      "auxiliary_datasets": ["DFC2019_US3D_Jacksonville_core", "SDGSAT1", "ECOSTRESS", "Sentinel2"]
+    },
+    {
+      "id": "R2_LAS_VEGAS_NV",
+      "name": "Las Vegas, Nevada (USA)",
+      "country": "USA",
+      "status": "confirmed",
+      "origin": {
+        "lat": 36.1699,
+        "lon": -115.1398
+      },
+      "geofence_radius_km": 120,
+      "terrain_difficulty": ["urban_desert_transition", "high_rise", "strong_night_light_contrast"],
+      "primary_datasets": ["USDA_NAIP_4band_RGB_NIR", "USGS_3DEP_1m_LiDAR"],
+      "auxiliary_datasets": ["SpaceNet2_LasVegas_core", "SDGSAT1", "ECOSTRESS", "Sentinel2"]
+    },
+    {
+      "id": "R3_MOJAVE_DESERT_CA",
+      "name": "West/Central Mojave Desert, California (USA)",
+      "country": "USA",
+      "status": "confirmed",
+      "origin": {
+        "lat": 35.0200,
+        "lon": -117.1800
+      },
+      "geofence_radius_km": 110,
+      "terrain_difficulty": ["pure_desert", "feature_sparse", "repetitive_sand_scrub"],
+      "primary_datasets": ["USDA_NAIP_4band_RGB_NIR", "USGS_3DEP_1m_LiDAR"],
+      "auxiliary_datasets": ["Sentinel2", "Landsat8_9", "ECOSTRESS"]
+    },
+    {
+      "id": "R4_MOAB_CANYONLANDS_UT",
+      "name": "Moab / Canyonlands, Utah (USA)",
+      "country": "USA",
+      "status": "confirmed",
+      "origin": {
+        "lat": 38.5733,
+        "lon": -109.5498
+      },
+      "geofence_radius_km": 300,
+      "terrain_difficulty": ["steep_canyons", "high_relief", "arid_plateaus"],
+      "primary_datasets": ["USDA_NAIP_4band_RGB_NIR", "USGS_3DEP_1m_LiDAR_Statewide"],
+      "auxiliary_datasets": ["Sentinel2", "Landsat8_9", "ECOSTRESS"]
+    },
+    {
+      "id": "R5_CENTRAL_SPAIN_PNOA",
+      "name": "Central Spain: Madrid–Toledo–La Mancha (Spain)",
+      "country": "Spain",
+      "status": "proposed_non_us_replacement_for_khartoum",
+      "origin": {
+        "lat": 39.9500,
+        "lon": -3.6500
+      },
+      "geofence_radius_km": 200,
+      "terrain_difficulty": ["arid_semi_arid_plateau", "low_contrast_soil_urban", "dense_historic_and_modern_urban"],
+      "primary_datasets": ["Spain_IGN_PNOA_RGB_NIR_25_50cm", "Spain_IGN_PNOA_LiDAR"],
+      "auxiliary_datasets": ["Sentinel2", "SDGSAT1", "ECOSTRESS"]
+    },
+    {
+      "id": "R6_FRANCE_PARIS_LOIRE_BASIN",
+      "name": "Paris–Loire Industrial Basin: Orléans–Paris (France)",
+      "country": "France",
+      "status": "proposed_non_us_replacement_for_rotterdam",
+      "origin": {
+        "lat": 47.9000,
+        "lon": 2.0000
+      },
+      "geofence_radius_km": 180,
+      "terrain_difficulty": ["dense_european_urban", "industrial_river_ports_seine", "rail_logistics_hubs", "agricultural_forest_mix"],
+      "primary_datasets": ["France_IGN_BD_ORTHO_20cm_RGB_NIR", "France_IGN_LiDAR_HD_50cm_DSM"],
+      "auxiliary_datasets": ["Sentinel2", "SDGSAT1", "ECOSTRESS"]
+    }
+  ],
+  "cancelled_regions": [
+    {
+      "name": "Port of Rotterdam, Netherlands",
+      "reason": "SpaceNet 6 radius ~6 km (<100 km); national footprint clips heavily into North Sea and foreign borders."
+    },
+    {
+      "name": "Khartoum, Sudan",
+      "reason": "SpaceNet 2 radius ~15 km (<100 km); no public sub-meter imagery or LiDAR elevation data nationwide."
+    }
+  ],
+  "variation_parameters": {
+    "flight_kinematics": [
+      "random_start_position_within_x_km_of_origin",
+      "random_yaw_orientation",
+      "random_flight_speed_from_range",
+      "random_flight_altitude_from_range"
+    ],
+    "camera_and_optics": [
+      "spectral_camera_model",
+      "field_of_view_angle",
+      "camera_pitch_direction",
+      "motion_blur_and_rolling_shutter",
+      "lens_distortion_radial_tangential",
+      "auto_exposure_and_dynamic_range_clipping",
+      "sensor_noise_iso_shot_and_thermal_fpn",
+      "video_output_resolution_only"
+    ],
+    "environment_and_lighting": [
+      "sun_angle_azimuth_elevation",
+      "day_night_lighting_or_relighting",
+      "atmospheric_haze_fog_visibility",
+      "sun_glare_lens_flare_specular_glint",
+      "color_temperature_and_white_balance_shift"
+    ],
+    "footage_defects": [
+      "lens_cracks",
+      "water_marks_and_droplets"
+    ]
+  }
+}
