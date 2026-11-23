@@ -208,9 +208,9 @@ class EffectsPipeline:
         p = self.params
         img = render_out.image.copy()
 
-        # 1. Atmospheric Haze / Fog (#12) using exact 3D depth buffer
+        # 1. Atmospheric Haze / Fog (#12) using exact 3D depth buffer + ABL scale height
         if p.haze_enabled:
-            img = self._apply_haze(img, render_out.depth_m, render_out.sky_mask)
+            img = self._apply_haze(img, render_out.depth_m, render_out.sky_mask, pose.z_agl_m)
 
         # 2. Sun Glare, Lens Flare & Specular Glint (#15)
         if p.sun_glare_enabled and p.spectral_mode not in ("thermal_lwir", "night_vision"):
@@ -264,19 +264,27 @@ class EffectsPipeline:
         return np.clip(np.round(img * 255.0), 0, 255).astype(np.uint8)
 
     def _apply_haze(
-        self, img: np.ndarray, depth_m: np.ndarray, sky_mask: np.ndarray
+        self, img: np.ndarray, depth_m: np.ndarray, sky_mask: np.ndarray, z_agl_m: float = 250.0
     ) -> np.ndarray:
         p = self.params
-        vis_m = max(300.0, p.visibility_km * 1000.0)
-        # Koschmieder extinction coefficient beta = 3.912 / visibility_m
+        vis_km = max(1.0, p.visibility_km)
+        vis_m = vis_km * 1000.0
+        # Surface Koschmieder extinction beta_0 = 3.912 / V_m integrated over exponential ABL scale height
         beta = 3.912 / vis_m
-        # Thermal LWIR penetrates light haze better than visible wavelengths
+        # Thermal LWIR (8-14 um) penetrates haze/mist much better than visible wavelengths
         if p.spectral_mode == "thermal_lwir":
-            beta *= 0.35
+            beta *= 0.18
         elif p.spectral_mode == "nir":
             beta *= 0.65
 
-        trans = np.exp(-beta * np.clip(depth_m, 0.0, 20000.0)).astype(np.float32)
+        # Shallow fog/mist layer (~250-450m) vs thicker clear-air boundary-layer aerosol (~1000m)
+        scale_h = 220.0 + 780.0 * float(np.clip((vis_km - 1.5) / 6.5, 0.0, 1.0))
+        dz = max(float(z_agl_m), 1.0)
+        abl_ratio = (scale_h / dz) * (1.0 - math.exp(-dz / scale_h))
+        d_eff = np.clip(depth_m, 0.0, 20000.0) * abl_ratio
+        # Enforce MVFR operational optical depth ceiling (tau <= 1.05 -> transmittance >= 0.35)
+        tau = np.minimum(beta * d_eff, 1.05)
+        trans = np.exp(-tau).astype(np.float32)
         trans = np.where(sky_mask, 0.0, trans)
 
         if p.spectral_mode == "thermal_lwir":

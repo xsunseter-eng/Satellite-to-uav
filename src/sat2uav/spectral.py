@@ -90,25 +90,29 @@ def render_spectral_radiance(
             # Diurnal thermal inversion: water & concrete/urban retain heat; dry soil/high ridges cool
             temp = (
                 0.34
-                + 0.28 * water_proxy
-                + 0.30 * urban_proxy
-                + 0.10 * veg_proxy
-                - 0.14 * z_norm
+                + 0.30 * water_proxy
+                + 0.34 * urban_proxy
+                + 0.14 * veg_proxy
+                + 0.16 * albedo
+                - 0.16 * z_norm
                 - 0.12 * (1.0 - albedo) * (1.0 - urban_proxy)
             )
+            # Simulate LWIR core AGC dynamic range expansion for rural/forest scenes
+            temp = (temp - 0.34) * 1.75 + 0.46
         else:
             # Daytime solar heating: dark sunlit rock/asphalt hot; water, shadows, & vegetation cool
             absorptance = 1.0 - 0.55 * albedo
-            solar_heat = 0.42 * absorptance * direct
+            solar_heat = 0.45 * absorptance * direct
             temp = (
                 0.28
                 + solar_heat
-                + 0.16 * urban_proxy
-                - 0.24 * veg_proxy
-                - 0.28 * water_proxy
-                - 0.12 * z_norm
+                + 0.20 * urban_proxy
+                - 0.26 * veg_proxy
+                - 0.30 * water_proxy
+                - 0.14 * z_norm
             )
-        val = np.clip(temp, 0.04, 0.98)
+            temp = (temp - 0.38) * 1.55 + 0.48
+        val = np.clip(temp, 0.04, 0.96)
         out = np.repeat(val[:, :, None], 3, axis=-1)
 
     elif spectral_mode == "night_vision":

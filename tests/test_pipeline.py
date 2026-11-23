@@ -123,3 +123,37 @@ def test_geofence_sampling_respects_radius():
         assert 0.0 <= dist_km <= 300.01
         assert 35.0 <= lat <= 42.0
         assert -114.0 <= lon <= -105.0
+
+
+def test_high_altitude_adverse_fog_never_washes_out(tmp_path: Path):
+    """Verify exponential ABL haze integral + optical depth clamp prevent blank gray frames."""
+    from sat2uav.fast_gpu_renderer import FastSceneGPURenderer
+
+    scene_dir = create_synthetic_test_scene(tmp_path / "scene_fog", width=320, height=320, gsd_m=2.0)
+    scene = load_scene(scene_dir)
+    cfg = load_generation_config(Path(__file__).resolve().parents[1] / "configs" / "default_generation.yaml")
+    cfg.resolutions = [(640, 360)]
+    cfg.duration_sec = 0.2
+    cfg.fps = 10
+    cfg.camera.spectral_modes = ["rgb"]
+    rng = np.random.default_rng(123)
+    params, poses = sample_valid_flight(scene, cfg, rng, video_index=0)
+    params.haze_enabled = True
+    params.visibility_km = 1.5  # Extreme heavy fog stress test
+    params.is_night = False
+
+    # Stress-test high altitude + oblique look angle
+    high_pose = poses[0]
+    high_pose.z_agl_m = 2500.0
+    high_pose.z_msl_m = float(scene.z_min_m + 2500.0)
+    high_pose.pitch_deg = -35.0
+    params.pitch_deg = -35.0
+
+    with FastSceneGPURenderer(scene) as fast_gpu:
+        fast_gpu.configure_video(params)
+        img_f = fast_gpu.render_frame_rgb_float(high_pose)
+        effects = EffectsPipeline(params)
+        frame = effects.apply_post_only(img_f, high_pose, fast_gpu.focal_px)
+
+    assert frame.shape == (360, 640, 3)
+    assert frame.std() > 12.0, f"High-altitude fog frame washed out (std={frame.std():.2f})"

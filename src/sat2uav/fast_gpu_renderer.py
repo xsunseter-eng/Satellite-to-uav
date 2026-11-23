@@ -63,6 +63,7 @@ uniform vec3 u_wb_gains;
 // Atmosphere & glare uniforms
 uniform int u_haze_enabled;
 uniform float u_haze_beta;
+uniform float u_haze_scale_h;
 uniform int u_glare_enabled;
 uniform float u_glare_intensity;
 uniform float u_specular_glint;
@@ -197,21 +198,27 @@ void main() {
             float veg = clamp((ndvi - 0.15) * 2.2, 0.0, 1.0);
             float temp;
             if (u_is_night == 1) {
-                temp = 0.34 + 0.28 * water + 0.30 * urban + 0.10 * veg - 0.14 * z_norm - 0.12 * (1.0 - albedo) * (1.0 - urban);
+                temp = 0.34 + 0.30 * water + 0.34 * urban + 0.14 * veg + 0.16 * albedo - 0.16 * z_norm - 0.12 * (1.0 - albedo) * (1.0 - urban);
+                temp = (temp - 0.34) * 1.75 + 0.46;
             } else {
-                float solar_heat = 0.42 * (1.0 - 0.55 * albedo) * direct;
-                temp = 0.28 + solar_heat + 0.16 * urban - 0.24 * veg - 0.28 * water - 0.12 * z_norm;
+                float solar_heat = 0.45 * (1.0 - 0.55 * albedo) * direct;
+                temp = 0.28 + solar_heat + 0.20 * urban - 0.26 * veg - 0.30 * water - 0.14 * z_norm;
+                temp = (temp - 0.38) * 1.55 + 0.48;
             }
-            col = vec3(clamp(temp, 0.04, 0.98));
+            col = vec3(clamp(temp, 0.04, 0.96));
         } else {
             float nvg = clamp(0.55 * nir + 0.35 * albedo + 0.45 * pow(urban, 1.4), 0.0, 1.0);
             nvg = clamp(nvg * (0.55 + 0.45 * ndotl), 0.0, 1.0);
             col = vec3(0.14 * nvg, 0.96 * nvg, 0.26 * nvg);
         }
 
-        // Koschmieder 3D atmospheric haze (#12)
+        // Koschmieder 3D atmospheric haze with exponential ABL scale-height decay (#12)
         if (u_haze_enabled == 1) {
-            float trans = exp(-u_haze_beta * clamp(depth_m, 0.0, 20000.0));
+            float dz = max(u_cam_pos.z - hit_p.z, 1.0);
+            float h_sc = max(u_haze_scale_h, 50.0);
+            float d_eff = clamp(depth_m, 0.0, 20000.0) * (h_sc / dz) * (1.0 - exp(-dz / h_sc));
+            float tau = min(u_haze_beta * d_eff, 1.05);
+            float trans = exp(-tau);
             col = mix(haze_airlight(), col, trans);
         }
 
@@ -362,12 +369,14 @@ class FastSceneGPURenderer:
         wb[1] *= float(1.0 + params.wb_tint)
         wb /= float(np.mean(wb))
 
-        vis_m = max(300.0, params.visibility_km * 1000.0)
+        vis_km = max(1.0, params.visibility_km)
+        vis_m = vis_km * 1000.0
         beta = 3.912 / vis_m
         if params.spectral_mode == "thermal_lwir":
-            beta *= 0.35
+            beta *= 0.18
         elif params.spectral_mode == "nir":
             beta *= 0.65
+        scale_h = 220.0 + 780.0 * float(np.clip((vis_km - 1.5) / 6.5, 0.0, 1.0))
 
         self.prog["u_res"].value = (float(params.width), float(params.height))
         self.prog["u_fx"].value = float(self.focal_px)
@@ -380,6 +389,7 @@ class FastSceneGPURenderer:
         self.prog["u_wb_gains"].value = (float(wb[0]), float(wb[1]), float(wb[2]))
         self.prog["u_haze_enabled"].value = 1 if params.haze_enabled else 0
         self.prog["u_haze_beta"].value = float(beta)
+        self.prog["u_haze_scale_h"].value = float(scale_h)
         self.prog["u_glare_enabled"].value = 1 if (params.sun_glare_enabled and not params.is_night) else 0
         self.prog["u_glare_intensity"].value = float(params.glare_intensity)
         self.prog["u_specular_glint"].value = float(params.specular_glint)

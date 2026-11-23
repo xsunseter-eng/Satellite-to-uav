@@ -59,56 +59,56 @@ REGION_CLIMATOLOGY: dict[str, RegionClimatology] = {
         base_visibility_km=12.0,
         volatility_factor=1.35,
         adverse_prob=0.14,
-        adverse_range_km=(0.9, 3.2),
+        adverse_range_km=(2.0, 4.2),
         biome_label="Humid subtropical coastal/wetland (frequent morning mist & humidity haze)",
     ),
     "R2_LAS_VEGAS_NV": RegionClimatology(
         base_visibility_km=20.0,
         volatility_factor=0.85,
         adverse_prob=0.06,
-        adverse_range_km=(2.0, 5.0),
+        adverse_range_km=(2.5, 5.5),
         biome_label="Arid desert basin with urban aerosol layer",
     ),
     "R3_MOJAVE_DESERT_CA": RegionClimatology(
         base_visibility_km=24.0,
         volatility_factor=0.75,
         adverse_prob=0.09,
-        adverse_range_km=(1.0, 3.5),
+        adverse_range_km=(2.2, 4.5),
         biome_label="High-clarity arid desert with stochastic blowing dust/sand events",
     ),
     "R4_MOAB_CANYONLANDS_UT": RegionClimatology(
         base_visibility_km=28.0,
         volatility_factor=0.65,
         adverse_prob=0.05,
-        adverse_range_km=(2.5, 6.0),
+        adverse_range_km=(2.8, 6.0),
         biome_label="High-altitude dry Colorado Plateau (crisp mountain-desert air)",
     ),
     "R5_CENTRAL_SPAIN_PNOA": RegionClimatology(
         base_visibility_km=19.0,
         volatility_factor=0.90,
         adverse_prob=0.08,
-        adverse_range_km=(1.5, 4.5),
+        adverse_range_km=(2.2, 4.8),
         biome_label="Semi-arid Iberian plateau with periodic Saharan dust (Calima) haze",
     ),
     "R6_FRANCE_PARIS_LOIRE_BASIN": RegionClimatology(
         base_visibility_km=11.0,
         volatility_factor=1.40,
         adverse_prob=0.16,
-        adverse_range_km=(0.8, 3.0),
+        adverse_range_km=(2.0, 4.0),
         biome_label="Temperate oceanic basin (frequent radiation fog, mist, & urban haze)",
     ),
     "R7_CHINA_UAV_VISLOC": RegionClimatology(
         base_visibility_km=13.0,
         volatility_factor=1.30,
         adverse_prob=0.14,
-        adverse_range_km=(1.0, 3.5),
+        adverse_range_km=(2.0, 4.2),
         biome_label="Humid subtropical Qinling-Daba mountain valleys (Hubei, China)",
     ),
     "R8_KENYA_KABR_MPALA": RegionClimatology(
         base_visibility_km=22.0,
         volatility_factor=0.85,
         adverse_prob=0.08,
-        adverse_range_km=(1.5, 4.5),
+        adverse_range_km=(2.4, 5.0),
         biome_label="Equatorial highland semi-arid savanna (Laikipia Plateau, Kenya)",
     ),
 }
@@ -117,7 +117,7 @@ DEFAULT_CLIMATOLOGY = RegionClimatology(
     base_visibility_km=18.0,
     volatility_factor=1.0,
     adverse_prob=0.08,
-    adverse_range_km=(1.5, 4.5),
+    adverse_range_km=(2.2, 4.8),
     biome_label="Mid-latitude standard ISA atmosphere",
 )
 
@@ -213,7 +213,7 @@ def sample_visibility_km(
              mist, or desert dust storm) draws directly from V_adv(r).
            - Otherwise, multiplicative log-normal weather perturbation:
                eps ~ LogNormal(0, (0.40 * k_h(r))^2)
-               V_final = clip(V_det * eps, 0.8 km, 40.0 km)
+               V_final = clip(V_det * eps, 2.0 km, 40.0 km)
     """
     clim = REGION_CLIMATOLOGY.get(region_id or "", DEFAULT_CLIMATOLOGY)
     abl_factor = 1.0 + 0.55 * (1.0 - math.exp(-max(altitude_agl_m, 0.0) / h_scale_m))
@@ -227,7 +227,7 @@ def sample_visibility_km(
     else:
         sigma_w = 0.40 * clim.volatility_factor
         stochastic_factor = float(math.exp(rng.normal(0.0, sigma_w)))
-        v_final = float(np.clip(v_det * stochastic_factor, 0.8, 40.0))
+        v_final = float(np.clip(v_det * stochastic_factor, 2.0, 40.0))
         weather_state = "vfr_clear" if v_final >= 8.0 else "mvfr_haze"
 
     diag = {
