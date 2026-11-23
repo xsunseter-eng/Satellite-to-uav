@@ -1,0 +1,85 @@
+# Default configuration for Satellite-to-UAV Synthetic Flight Video Generation
+# Adjust any range or toggle to vary or limit generated footage parameters.
+
+num_videos: 4
+duration_sec: 5.0
+fps: 24
+seed: 42
+
+flight:
+  # Maximum distance (X km) of random flight starting position from the scene origin
+  max_start_offset_km: 1.0
+  # Initial heading along yaw axis (degrees, 0 = North, 90 = East, clockwise)
+  yaw_deg_range: [0.0, 360.0]
+  # Flight speed range (meters per second)
+  speed_mps_range: [12.0, 32.0]
+  # Flight altitude range above ground level (meters AGL)
+  altitude_agl_m_range: [90.0, 300.0]
+  # Safety margin kept inside raster boundaries (meters)
+  boundary_margin_m: 120.0
+
+camera:
+  # #20 (Revised): Vary native output video resolutions only (no digital zoom crop)
+  resolutions:
+    - [854, 480]     # 480p
+    - [1280, 720]    # 720p
+    - [1920, 1080]   # 1080p
+    # - [3840, 2160] # 4K (uncomment for 4K renders)
+  # Horizontal field of view range (degrees)
+  fov_deg_range: [50.0, 90.0]
+  # Camera gimbal pitch range (degrees: -90 = nadir straight down, -25 = oblique forward)
+  pitch_deg_range: [-85.0, -28.0]
+  # Virtual camera spectral models
+  spectral_modes:
+    - rgb
+    - panchromatic
+    - nir
+    - false_color_cir
+    - thermal_lwir
+    - night_vision
+  # #7: Optical radial & tangential lens distortion
+  lens_distortion:
+    enabled: true
+    k1_range: [-0.22, 0.12]
+    k2_range: [-0.05, 0.05]
+    p1_range: [-0.01, 0.01]
+    p2_range: [-0.01, 0.01]
+
+lighting:
+  # Solar azimuth (0=N, 90=E, 180=S, 270=W) and elevation above horizon
+  sun_azimuth_deg_range: [0.0, 360.0]
+  sun_elevation_deg_range: [15.0, 75.0]
+  # Probability of nighttime / low-light lighting condition (also active in night_vision)
+  night_probability: 0.20
+  # DSM ray-casted shadow darkness factor
+  shadow_strength_range: [0.25, 0.70]
+  # #16: Color temperature (Kelvin) & green/magenta white balance tint
+  color_temp_k_range: [3600.0, 8200.0]
+  wb_tint_range: [-0.07, 0.07]
+
+atmosphere:
+  # #12: Distance- and altitude-dependent atmospheric haze / fog
+  haze_enabled: true
+  visibility_km_range: [1.8, 22.0]
+  # #15: Sun glare, lens flare & surface specular glint
+  sun_glare_enabled: true
+  glare_intensity_range: [0.15, 0.70]
+  specular_glint_range: [0.10, 0.50]
+
+sensor_and_artifacts:
+  # #6: Velocity-coupled motion blur & CMOS rolling-shutter skew
+  motion_blur_enabled: true
+  shutter_sec_range: [0.004, 0.025]
+  rolling_shutter_strength_range: [0.0, 0.60]
+  # #8: Auto-exposure temporal lag & dynamic range clipping
+  auto_exposure_enabled: true
+  ae_target_luma_range: [0.44, 0.58]
+  ae_lag_alpha_range: [0.10, 0.35]
+  dr_clip_strength_range: [0.0, 0.30]
+  # #9: Sensor noise (optical ISO/shot noise, thermal FPN/striping)
+  sensor_noise_enabled: true
+  iso_noise_range: [0.005, 0.040]
+  thermal_fpn_range: [0.008, 0.035]
+  # Baseline footage defects: lens cracks & water marks / droplets
+  lens_crack_probability: 0.25
+  watermark_droplet_probability: 0.30

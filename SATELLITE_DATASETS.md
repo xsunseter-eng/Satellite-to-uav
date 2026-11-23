@@ -84,7 +84,7 @@ Useful for validating domain transfer from aerial orthophotos to true orbital im
 | **R3** | **West/Central Mojave Desert, CA (USA)** | `35.0200°N, 117.1800°W` | **110 km** | Pure feature-sparse sand/scrub desert (disjoint from Las Vegas, ~225 km apart) | NAIP + USGS 3DEP + Sentinel-2 / ECOSTRESS |
 | **R4** | **Moab / Canyonlands, UT (USA)** | `38.5733°N, 109.5498°W` | **300 km** | Steep red-rock canyons, mesas, high terrain relief (statewide 1 m LiDAR) | NAIP + USGS 3DEP + Sentinel-2 / ECOSTRESS |
 
-### Proposed Non-US Replacement Regions (Land-Focused, Pending Final Confirmation)
+### Confirmed Non-US Regions (Land-Focused)
 | ID | Region | Origin (Lat, Lon) | Radius | Difficulty / Terrain Profile | Primary Data Stack |
 | :-: | :--- | :--- | :-: | :--- | :--- |
 | **R5** | **Central Spain: Madrid–Toledo–La Mancha** *(Replaces Khartoum)* | `39.9500°N, 3.6500°W` | **200 km** | Arid/semi-arid ochre plateau + low-contrast urban + dense Madrid metro (~100% Spanish land) | **Spain IGN PNOA** (0.25–0.5 m RGB+NIR + nationwide LiDAR) + Sentinel-2 / SDGSAT-1 / ECOSTRESS |

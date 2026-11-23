@@ -68,7 +68,7 @@
       "id": "R5_CENTRAL_SPAIN_PNOA",
       "name": "Central Spain: Madrid–Toledo–La Mancha (Spain)",
       "country": "Spain",
-      "status": "proposed_non_us_replacement_for_khartoum",
+      "status": "confirmed",
       "origin": {
         "lat": 39.9500,
         "lon": -3.6500
@@ -82,7 +82,7 @@
       "id": "R6_FRANCE_PARIS_LOIRE_BASIN",
       "name": "Paris–Loire Industrial Basin: Orléans–Paris (France)",
       "country": "France",
-      "status": "proposed_non_us_replacement_for_rotterdam",
+      "status": "confirmed",
       "origin": {
         "lat": 47.9000,
         "lon": 2.0000

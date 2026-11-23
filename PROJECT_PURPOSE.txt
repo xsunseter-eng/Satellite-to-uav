@@ -80,7 +80,7 @@ predetermined, bounded ranges:
   3. West/Central Mojave Desert, CA (USA) — Feature-Sparse Desert            — r = 110 km
   4. Moab / Canyonlands, UT (USA) — Steep Canyons & High Relief              — r = 300 km
 
-  [Proposed Non-US Regions — Nationwide Open Sub-Meter RGB+NIR + LiDAR]
+  [Confirmed Non-US Regions — Nationwide Open Sub-Meter RGB+NIR + LiDAR]
   5. Central Spain: Madrid–Toledo–La Mancha (Spain, IGN PNOA)                — r = 200 km
      (Arid plateau + low-contrast urban; replaces cancelled Khartoum)
   6. Paris–Loire Industrial Basin: Orléans–Paris (France, IGN BD ORTHO+HD)   — r = 180 km

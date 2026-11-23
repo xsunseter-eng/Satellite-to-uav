@@ -39,13 +39,55 @@ All regions enforce a **100–300 km land-focused radius** with public sub-meter
 | **R2** | Las Vegas, NV (USA) | Confirmed | `36.1699°N, 115.1398°W` | 120 km | Urban-to-desert edge, high-rise, night lights | NAIP + USGS 3DEP + SpaceNet 2 + SDGSAT-1 |
 | **R3** | West/Central Mojave Desert, CA (USA) | Confirmed | `35.0200°N, 117.1800°W` | 110 km | Feature-sparse sand/scrub desert | NAIP + USGS 3DEP + ECOSTRESS |
 | **R4** | Moab / Canyonlands, UT (USA) | Confirmed | `38.5733°N, 109.5498°W` | 300 km | Steep canyons, mesas, high relief | NAIP + USGS 3DEP + ECOSTRESS |
-| **R5** | Central Spain: Madrid–Toledo–La Mancha (Spain) | Proposed (Non-US) | `39.9500°N, 3.6500°W` | 200 km | Arid plateau, low-contrast urban + metro | **IGN PNOA** (RGB+NIR + LiDAR) + SDGSAT-1 |
-| **R6** | Paris–Loire Basin: Orléans–Paris (France) | Proposed (Non-US) | `47.9000°N, 2.0000°E` | 180 km | Dense EU urban, Seine industrial ports, rural | **IGN BD ORTHO** + **LiDAR HD** + SDGSAT-1 |
+| **R5** | Central Spain: Madrid–Toledo–La Mancha (Spain) | Confirmed | `39.9500°N, 3.6500°W` | 200 km | Arid plateau, low-contrast urban + metro | **IGN PNOA** (RGB+NIR + LiDAR) + SDGSAT-1 |
+| **R6** | Paris–Loire Basin: Orléans–Paris (France) | Confirmed | `47.9000°N, 2.0000°E` | 180 km | Dense EU urban, Seine industrial ports, rural | **IGN BD ORTHO** + **LiDAR HD** + SDGSAT-1 |
+
+---
+
+## Quick Start
+
+### 1. Setup Environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+*(Requires `ffmpeg` installed on your system `PATH`.)*
+
+### 2. List Confirmed Regions
+```bash
+sat2uav list-regions
+```
+
+### 3. Fetch Real Public Satellite / Overhead + 3D DSM Data & Generate UAV Videos
+Fetch a corridor on demand from any confirmed region (`R1`–`R6`) and generate `N` randomized UAV videos:
+```bash
+sat2uav run-region \
+  --region R4_MOAB_CANYONLANDS_UT \
+  --out outputs/moab_demo \
+  --config configs/default_generation.yaml \
+  --num-videos 4 \
+  --duration 5.0 \
+  --size-km 2.5 \
+  --gsd 1.0
+```
+
+Or generate directly from any standardized local GeoTIFF + DSM bundle (`imagery.tif`, `dsm.tif`, `metadata.json`):
+```bash
+sat2uav generate \
+  --scene data/my_scene \
+  --out outputs/my_run \
+  --config configs/default_generation.yaml \
+  --num-videos 5
+```
 
 ---
 
 ## Repository Contents
 
+- [`src/sat2uav/`](src/sat2uav/) — Core Python package (on-demand STAC/WMS fetcher, 3D DSM ray-marching camera renderer, 6 spectral camera models, all optical/atmospheric/sensor effects, FFmpeg video writer, and CLI).
+- [`configs/default_generation.yaml`](configs/default_generation.yaml) — Configurable parameter ranges and toggles for batch UAV generation.
+- [`tests/test_pipeline.py`](tests/test_pipeline.py) — Automated test suite.
 - [`PROJECT_PURPOSE.txt`](PROJECT_PURPOSE.txt) — Full project mission, generation requirements, and variation specification.
 - [`SATELLITE_DATASETS.md`](SATELLITE_DATASETS.md) — Feasibility analysis of public satellite/overhead datasets (depth, multispectral, day/night, high-res) and ingestion strategy.
 - [`REGIONS_AND_PARAMS.json`](REGIONS_AND_PARAMS.json) — Machine-readable registry of geofenced regions and active variation parameters.

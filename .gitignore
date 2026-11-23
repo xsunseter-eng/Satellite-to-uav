@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
 
 # Geospatial / Large Raw Data & Generated Videos
 data/
