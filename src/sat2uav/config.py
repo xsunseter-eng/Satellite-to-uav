@@ -3,20 +3,30 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import yaml
 
+from .distributions import (
+    STANDARD_RESOLUTIONS,
+    pick_equal_resolution,
+    sample_fov_deg,
+    sample_pitch_deg,
+    sample_sun_elevation_deg,
+    sample_visibility_km,
+)
+
 
 @dataclass
 class FlightConfig:
-    max_start_offset_km: float = 1.0
+    max_start_offset_km: float | None = None
     yaw_deg_range: tuple[float, float] = (0.0, 360.0)
-    speed_mps_range: tuple[float, float] = (12.0, 32.0)
-    altitude_agl_m_range: tuple[float, float] = (90.0, 300.0)
+    use_aviation_distributions: bool = True
+    speed_mps_range: tuple[float, float] = (27.78, 612.53)
+    altitude_agl_m_range: tuple[float, float] = (120.0, 15240.0)
     boundary_margin_m: float = 120.0
 
 
@@ -31,11 +41,12 @@ class LensDistortionConfig:
 
 @dataclass
 class CameraConfig:
+    equal_resolution_distribution: bool = True
     resolutions: list[tuple[int, int]] = field(
-        default_factory=lambda: [(854, 480), (1280, 720), (1920, 1080)]
+        default_factory=lambda: list(STANDARD_RESOLUTIONS)
     )
-    fov_deg_range: tuple[float, float] = (50.0, 90.0)
-    pitch_deg_range: tuple[float, float] = (-85.0, -28.0)
+    fov_deg_range: tuple[float, float] = (24.0, 90.0)
+    pitch_deg_range: tuple[float, float] = (-90.0, -20.0)
     spectral_modes: list[str] = field(
         default_factory=lambda: [
             "rgb",
@@ -52,7 +63,7 @@ class CameraConfig:
 @dataclass
 class LightingConfig:
     sun_azimuth_deg_range: tuple[float, float] = (0.0, 360.0)
-    sun_elevation_deg_range: tuple[float, float] = (15.0, 75.0)
+    sun_elevation_deg_range: tuple[float, float] = (8.0, 78.0)
     night_probability: float = 0.20
     shadow_strength_range: tuple[float, float] = (0.25, 0.70)
     color_temp_k_range: tuple[float, float] = (3600.0, 8200.0)
@@ -62,7 +73,8 @@ class LightingConfig:
 @dataclass
 class AtmosphereConfig:
     haze_enabled: bool = True
-    visibility_km_range: tuple[float, float] = (1.8, 22.0)
+    use_mathematical_visibility_model: bool = True
+    visibility_km_range: tuple[float, float] = (0.8, 40.0)
     sun_glare_enabled: bool = True
     glare_intensity_range: tuple[float, float] = (0.15, 0.70)
     specular_glint_range: tuple[float, float] = (0.10, 0.50)
@@ -71,7 +83,7 @@ class AtmosphereConfig:
 @dataclass
 class SensorArtifactsConfig:
     motion_blur_enabled: bool = True
-    shutter_sec_range: tuple[float, float] = (0.004, 0.025)
+    shutter_sec_range: tuple[float, float] = (0.002, 0.018)
     rolling_shutter_strength_range: tuple[float, float] = (0.0, 0.60)
     auto_exposure_enabled: bool = True
     ae_target_luma_range: tuple[float, float] = (0.44, 0.58)
@@ -80,15 +92,18 @@ class SensorArtifactsConfig:
     sensor_noise_enabled: bool = True
     iso_noise_range: tuple[float, float] = (0.005, 0.040)
     thermal_fpn_range: tuple[float, float] = (0.008, 0.035)
-    lens_crack_probability: float = 0.25
-    watermark_droplet_probability: float = 0.30
+    lens_crack_probability: float = 0.20
+    watermark_droplet_probability: float = 0.25
 
 
 @dataclass
 class GenerationConfig:
-    num_videos: int = 4
-    duration_sec: float = 5.0
-    fps: int = 24
+    num_videos: int = 100
+    duration_sec: float = 10.0
+    fps: int = 30
+    keyframe_interval: int = 10
+    keyframe_format: str = "png"
+    render_engine: str = "gpu_opengl_raymarch"
     seed: int | None = 42
     flight: FlightConfig = field(default_factory=FlightConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
@@ -150,6 +165,7 @@ class VideoSampleParams:
     thermal_fpn: float
     has_lens_crack: bool
     has_watermark_droplets: bool
+    visibility_diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -172,11 +188,13 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
     a_raw = raw.get("atmosphere", {})
     s_raw = raw.get("sensor_and_artifacts", {})
 
+    max_off = f_raw.get("max_start_offset_km", None)
     flight = FlightConfig(
-        max_start_offset_km=float(f_raw.get("max_start_offset_km", 1.0)),
+        max_start_offset_km=None if max_off is None else float(max_off),
         yaw_deg_range=_pair(f_raw.get("yaw_deg_range", (0.0, 360.0))),
-        speed_mps_range=_pair(f_raw.get("speed_mps_range", (12.0, 32.0))),
-        altitude_agl_m_range=_pair(f_raw.get("altitude_agl_m_range", (90.0, 300.0))),
+        use_aviation_distributions=bool(f_raw.get("use_aviation_distributions", True)),
+        speed_mps_range=_pair(f_raw.get("speed_mps_range", (27.78, 612.53))),
+        altitude_agl_m_range=_pair(f_raw.get("altitude_agl_m_range", (120.0, 15240.0))),
         boundary_margin_m=float(f_raw.get("boundary_margin_m", 120.0)),
     )
 
@@ -190,12 +208,13 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
 
     res_list = [
         (int(r[0]), int(r[1]))
-        for r in c_raw.get("resolutions", [(854, 480), (1280, 720), (1920, 1080)])
+        for r in c_raw.get("resolutions", STANDARD_RESOLUTIONS)
     ]
     camera = CameraConfig(
+        equal_resolution_distribution=bool(c_raw.get("equal_resolution_distribution", True)),
         resolutions=res_list,
-        fov_deg_range=_pair(c_raw.get("fov_deg_range", (50.0, 90.0))),
-        pitch_deg_range=_pair(c_raw.get("pitch_deg_range", (-85.0, -28.0))),
+        fov_deg_range=_pair(c_raw.get("fov_deg_range", (24.0, 90.0))),
+        pitch_deg_range=_pair(c_raw.get("pitch_deg_range", (-90.0, -20.0))),
         spectral_modes=list(
             c_raw.get(
                 "spectral_modes",
@@ -207,7 +226,7 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
 
     lighting = LightingConfig(
         sun_azimuth_deg_range=_pair(l_raw.get("sun_azimuth_deg_range", (0.0, 360.0))),
-        sun_elevation_deg_range=_pair(l_raw.get("sun_elevation_deg_range", (15.0, 75.0))),
+        sun_elevation_deg_range=_pair(l_raw.get("sun_elevation_deg_range", (8.0, 78.0))),
         night_probability=float(l_raw.get("night_probability", 0.20)),
         shadow_strength_range=_pair(l_raw.get("shadow_strength_range", (0.25, 0.70))),
         color_temp_k_range=_pair(l_raw.get("color_temp_k_range", (3600.0, 8200.0))),
@@ -216,7 +235,10 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
 
     atmosphere = AtmosphereConfig(
         haze_enabled=bool(a_raw.get("haze_enabled", True)),
-        visibility_km_range=_pair(a_raw.get("visibility_km_range", (1.8, 22.0))),
+        use_mathematical_visibility_model=bool(
+            a_raw.get("use_mathematical_visibility_model", True)
+        ),
+        visibility_km_range=_pair(a_raw.get("visibility_km_range", (0.8, 40.0))),
         sun_glare_enabled=bool(a_raw.get("sun_glare_enabled", True)),
         glare_intensity_range=_pair(a_raw.get("glare_intensity_range", (0.15, 0.70))),
         specular_glint_range=_pair(a_raw.get("specular_glint_range", (0.10, 0.50))),
@@ -224,7 +246,7 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
 
     sensor = SensorArtifactsConfig(
         motion_blur_enabled=bool(s_raw.get("motion_blur_enabled", True)),
-        shutter_sec_range=_pair(s_raw.get("shutter_sec_range", (0.004, 0.025))),
+        shutter_sec_range=_pair(s_raw.get("shutter_sec_range", (0.002, 0.018))),
         rolling_shutter_strength_range=_pair(
             s_raw.get("rolling_shutter_strength_range", (0.0, 0.60))
         ),
@@ -235,16 +257,19 @@ def load_generation_config(path: str | Path | None = None) -> GenerationConfig:
         sensor_noise_enabled=bool(s_raw.get("sensor_noise_enabled", True)),
         iso_noise_range=_pair(s_raw.get("iso_noise_range", (0.005, 0.040))),
         thermal_fpn_range=_pair(s_raw.get("thermal_fpn_range", (0.008, 0.035))),
-        lens_crack_probability=float(s_raw.get("lens_crack_probability", 0.25)),
+        lens_crack_probability=float(s_raw.get("lens_crack_probability", 0.20)),
         watermark_droplet_probability=float(
-            s_raw.get("watermark_droplet_probability", 0.30)
+            s_raw.get("watermark_droplet_probability", 0.25)
         ),
     )
 
     return GenerationConfig(
-        num_videos=int(raw.get("num_videos", 4)),
-        duration_sec=float(raw.get("duration_sec", 5.0)),
-        fps=int(raw.get("fps", 24)),
+        num_videos=int(raw.get("num_videos", 100)),
+        duration_sec=float(raw.get("duration_sec", 10.0)),
+        fps=int(raw.get("fps", 30)),
+        keyframe_interval=int(raw.get("keyframe_interval", 10)),
+        keyframe_format=str(raw.get("keyframe_format", "png")),
+        render_engine=str(raw.get("render_engine", "gpu_opengl_raymarch")),
         seed=raw.get("seed", 42),
         flight=flight,
         camera=camera,
@@ -264,10 +289,14 @@ def sample_video_params(
     yaw_deg: float,
     speed_mps: float,
     altitude_agl_m: float,
+    region_id: str | None = None,
 ) -> VideoSampleParams:
     """Sample all camera, lighting, atmosphere, and sensor parameters for one clip."""
-    res_idx = int(rng.integers(0, len(cfg.camera.resolutions)))
-    width, height = cfg.camera.resolutions[res_idx]
+    if cfg.camera.equal_resolution_distribution:
+        width, height = pick_equal_resolution(video_index, cfg.camera.resolutions)
+    else:
+        res_idx = int(rng.integers(0, len(cfg.camera.resolutions)))
+        width, height = cfg.camera.resolutions[res_idx]
 
     spectral_mode = str(
         cfg.camera.spectral_modes[int(rng.integers(0, len(cfg.camera.spectral_modes)))]
@@ -285,6 +314,21 @@ def sample_video_params(
     else:
         k1 = k2 = p1 = p2 = 0.0
 
+    if cfg.flight.use_aviation_distributions:
+        fov_deg = sample_fov_deg(rng, *cfg.camera.fov_deg_range)
+        pitch_deg = sample_pitch_deg(rng, *cfg.camera.pitch_deg_range)
+        sun_elev_deg = sample_sun_elevation_deg(rng, *cfg.lighting.sun_elevation_deg_range)
+    else:
+        fov_deg = float(rng.uniform(*cfg.camera.fov_deg_range))
+        pitch_deg = float(rng.uniform(*cfg.camera.pitch_deg_range))
+        sun_elev_deg = float(rng.uniform(*cfg.lighting.sun_elevation_deg_range))
+
+    if cfg.atmosphere.use_mathematical_visibility_model:
+        visibility_km, vis_diag = sample_visibility_km(region_id, altitude_agl_m, rng)
+    else:
+        visibility_km = float(rng.uniform(*cfg.atmosphere.visibility_km_range))
+        vis_diag = {"model": "uniform", "final_visibility_km": round(visibility_km, 3)}
+
     return VideoSampleParams(
         video_index=video_index,
         seed=int(rng.integers(0, 2**31 - 1)),
@@ -298,21 +342,21 @@ def sample_video_params(
         yaw_deg=float(yaw_deg),
         speed_mps=float(speed_mps),
         altitude_agl_m=float(altitude_agl_m),
-        fov_deg=float(rng.uniform(*cfg.camera.fov_deg_range)),
-        pitch_deg=float(rng.uniform(*cfg.camera.pitch_deg_range)),
+        fov_deg=fov_deg,
+        pitch_deg=pitch_deg,
         spectral_mode=spectral_mode,
         k1=k1,
         k2=k2,
         p1=p1,
         p2=p2,
         sun_azimuth_deg=float(rng.uniform(*cfg.lighting.sun_azimuth_deg_range)),
-        sun_elevation_deg=float(rng.uniform(*cfg.lighting.sun_elevation_deg_range)),
+        sun_elevation_deg=sun_elev_deg,
         is_night=is_night,
         shadow_strength=float(rng.uniform(*cfg.lighting.shadow_strength_range)),
         color_temp_k=float(rng.uniform(*cfg.lighting.color_temp_k_range)),
         wb_tint=float(rng.uniform(*cfg.lighting.wb_tint_range)),
         haze_enabled=cfg.atmosphere.haze_enabled,
-        visibility_km=float(rng.uniform(*cfg.atmosphere.visibility_km_range)),
+        visibility_km=visibility_km,
         sun_glare_enabled=cfg.atmosphere.sun_glare_enabled and not is_night,
         glare_intensity=float(rng.uniform(*cfg.atmosphere.glare_intensity_range)),
         specular_glint=float(rng.uniform(*cfg.atmosphere.specular_glint_range)),
@@ -338,6 +382,7 @@ def sample_video_params(
         has_watermark_droplets=bool(
             rng.random() < cfg.sensor_and_artifacts.watermark_droplet_probability
         ),
+        visibility_diagnostics=vis_diag,
     )
 
 

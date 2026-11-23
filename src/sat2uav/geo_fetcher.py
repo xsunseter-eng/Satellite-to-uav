@@ -275,23 +275,35 @@ def fetch_scene_corridor(
         dsm_collection = "cop-dem-glo-30"
 
     elif country_u == "FRANCE":
+        # IGN Géoplateforme WMS 1.3.0 accepts EPSG:3857 with max 2048x2048 per request
+        to_3857 = Transformer.from_crs(dst_crs, "EPSG:3857", always_xy=True)
+        bx0, by0 = to_3857.transform(x_min, y_min)
+        bx1, by1 = to_3857.transform(x_max, y_max)
+        req_w = min(width, 2048)
+        req_h = min(height, 2048)
         rgb = _fetch_wms_image(
             url="https://data.geopf.fr/wms-r",
             layer="ORTHOIMAGERY.ORTHOPHOTOS",
-            bbox_metric=(x_min, y_min, x_max, y_max),
-            crs=dst_crs,
-            width=width,
-            height=height,
+            bbox_metric=(bx0, by0, bx1, by1),
+            crs="EPSG:3857",
+            width=req_w,
+            height=req_h,
+            version="1.3.0",
         )
+        if (req_w, req_h) != (width, height):
+            rgb = np.asarray(Image.fromarray(rgb).resize((width, height), Image.Resampling.BILINEAR), dtype=np.uint8)
         try:
             irc = _fetch_wms_image(
                 url="https://data.geopf.fr/wms-r",
                 layer="ORTHOIMAGERY.ORTHOPHOTOS.IRC",
-                bbox_metric=(x_min, y_min, x_max, y_max),
-                crs=dst_crs,
-                width=width,
-                height=height,
+                bbox_metric=(bx0, by0, bx1, by1),
+                crs="EPSG:3857",
+                width=req_w,
+                height=req_h,
+                version="1.3.0",
             )
+            if (req_w, req_h) != (width, height):
+                irc = np.asarray(Image.fromarray(irc).resize((width, height), Image.Resampling.BILINEAR), dtype=np.uint8)
             nir = irc[:, :, 0]  # Red channel of IRC carries Near-Infrared
         except Exception:
             nir = np.clip(0.55 * rgb[:, :, 1] + 0.30 * rgb[:, :, 0] + 0.15 * rgb[:, :, 2], 0, 255).astype(np.uint8)

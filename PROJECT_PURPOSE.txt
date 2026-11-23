@@ -19,23 +19,35 @@ cross-view geo-localization, and perception robustness.
 2. CORE FUNCTIONAL REQUIREMENTS
 --------------------------------------------------------------------------------
 
-2.1 Standardized Input & Origin-Centered Batch Generation
+2.1 Standardized Input, Per-Region Output Folders & Formats
 - Accept a standardized georeferenced data package (GeoTIFF / Cloud-Optimized
   GeoTIFF [COG] imagery with CRS metadata, multispectral/IR bands, and aligned
   DSM/DTM elevation layers), streamed/clipped on demand along flight corridors.
-- Take a target geographic origin point and geofence radius (constrained to
-  100 km <= radius <= 300 km, strictly land-focused).
-- Generate N distinct synthetic UAV flight videos per run alongside structured
-  flight telemetry and parameter ground-truth metadata.
+- Organize outputs into dedicated per-region directories (`dataset/<REGION_ID>/`)
+  for N = 100 sorties per region (10.0 s duration at 30 FPS).
+- Save every generated sortie in three synchronized formats:
+  1. H.264 MP4 video across 4 equally distributed resolutions (360p, 480p,
+     720p, 1080p — 25% each; 4K excluded).
+  2. Lossless PNG keyframes extracted every 10 frames (30 PNGs per 10 s sortie).
+  3. Structured XML metadata (`UAVFootageMetadata`) storing scene provenance,
+     render engine, flight/camera/atmosphere parameters, and per-frame 6-DoF
+     pose telemetry linked to keyframes.
 
-2.2 Randomized Flight Kinematics & Trajectories
-For each of the N generated videos, randomize initial flight parameters within
-predetermined, bounded ranges:
-- Starting Position : Randomly sampled within a maximum distance of X km from
-                      the origin point (bounded by the region geofence).
-- Orientation (Yaw) : Randomly sampled initial heading along the yaw axis.
-- Flight Speed      : Randomly sampled from a predetermined [v_min, v_max] range.
-- Flight Altitude   : Randomly sampled from a predetermined [h_min, h_max] range.
+2.2 Aviation-Grounded Randomized Flight Kinematics & Trajectories
+For each of the N generated sorties, sample parameters from standard
+aeronautical statistical distributions:
+- Starting Position : Randomly sampled within the region's full confirmed
+                      geofence radius X (110–300 km, strictly land-focused).
+- Orientation (Yaw) : Uniform [0, 360) degrees true heading.
+- True Airspeed     : Truncated Log-Normal on [100 km/h, Mach 1.8 (2,205 km/h
+                      ISA MSL)], calibrated to Mean = 204.0 km/h (110.2 KTAS)
+                      and Median = 170.0 km/h (Bayraktar TB2 operational
+                      reference), spanning amateur/small UAS to F-22 Raptor
+                      supercruise.
+- Altitude (AGL)    : Truncated Log-Normal on [120 m (~400 ft FAA/EASA sUAS
+                      ceiling), 15,240 m (FL500 HALE/F-22 ceiling)], with
+                      Median = 1,631 m (~5,350 ft) and P90 = 5,316 m (~18,000 ft
+                      Bayraktar TB2 nominal operational altitude).
 
 2.3 Configurable & Limitable Variation Parameters
 
@@ -45,8 +57,20 @@ predetermined, bounded ranges:
 - Spectral Camera Models   : Virtual sensors covering available spectral bands
                              (RGB, Panchromatic/Grayscale, NIR, multispectral
                              composites, and simulated thermal/IR views).
-- Field of View (FoV)      : Varying camera horizontal/vertical FoV angles.
-- Camera Pitch Direction   : Varying gimbal pitch (nadir to oblique forward).
+- Field of View (FoV)      : Truncated Normal (mu=58 deg, sigma=16 deg, bounds
+                             [24, 90] deg) calibrated to airborne EO/IR turrets
+                             (ASELSAN CATS, WESCAM MX-15, Sniper ATP wide) and
+                             tactical sUAS wide optics (DJI Zenmuse, Skydio).
+- Camera Pitch Direction   : Truncated Normal (mu=-55 deg, sigma=16 deg, bounds
+                             [-90, -20] deg) centered on ISR oblique depression.
+- Sun Angle                : Uniform azimuth [0, 360) deg; Truncated Normal
+                             elevation (mu=42 deg, sigma=18 deg, bounds [8, 78]).
+- Visibility & Haze (#12)  : Mathematical model combining regional climatology,
+                             Atmospheric Boundary Layer (ABL) altitude clearing
+                             (H_scale = 1,800 m), and stochastic weather/adverse
+                             fog-or-dust probability via Koschmieder's law.
+- Video Output Resolution  : 4 equal aviation 16:9 tiers (360p, 480p, 720p,
+                             1080p — 25% each, no 4K, no digital zoom crop).
 - Footage Errors           : Synthetic lens/footage defects such as lens cracks
                              and water marks / droplets.
 

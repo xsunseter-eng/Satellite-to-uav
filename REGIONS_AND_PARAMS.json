@@ -104,26 +104,37 @@
     }
   ],
   "variation_parameters": {
+    "output_specification": {
+      "videos_per_region_N": 100,
+      "duration_sec": 10.0,
+      "fps": 30,
+      "keyframe_interval_frames": 10,
+      "keyframe_format": "png",
+      "metadata_format": "xml",
+      "equal_resolutions_no_4k": ["640x360", "854x480", "1280x720", "1920x1080"],
+      "primary_render_engine": "gpu_opengl_raymarch",
+      "comparison_render_engines": ["gpu_opengl_mesh", "cpu_raymarch"]
+    },
     "flight_kinematics": [
-      "random_start_position_within_x_km_of_origin",
-      "random_yaw_orientation",
-      "random_flight_speed_from_range",
-      "random_flight_altitude_from_range"
+      "random_start_position_within_full_region_geofence_radius_X",
+      "random_yaw_orientation_0_360",
+      "airspeed_trunc_lognorm_100kmh_to_mach1_8_mean_204kmh_tb2_median",
+      "altitude_agl_trunc_lognorm_120m_to_15240m_suas_tb2_f22_envelope"
     ],
     "camera_and_optics": [
-      "spectral_camera_model",
-      "field_of_view_angle",
-      "camera_pitch_direction",
+      "spectral_camera_model_6_modes",
+      "fov_trunc_norm_24_to_90deg_mu58_sigma16_eoir_gimbal_calibrated",
+      "pitch_trunc_norm_neg90_to_neg20deg_mu_neg55_sigma16",
       "motion_blur_and_rolling_shutter",
       "lens_distortion_radial_tangential",
       "auto_exposure_and_dynamic_range_clipping",
       "sensor_noise_iso_shot_and_thermal_fpn",
-      "video_output_resolution_only"
+      "video_output_resolution_4_equal_tiers_no_4k"
     ],
     "environment_and_lighting": [
-      "sun_angle_azimuth_elevation",
+      "sun_azimuth_uniform_0_360_elevation_trunc_norm_8_78deg_mu42_sigma18",
       "day_night_lighting_or_relighting",
-      "atmospheric_haze_fog_visibility",
+      "mathematical_visibility_haze_model_region_altitude_stochastic",
       "sun_glare_lens_flare_specular_glint",
       "color_temperature_and_white_balance_shift"
     ],

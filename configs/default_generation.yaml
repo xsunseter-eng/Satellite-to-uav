@@ -1,35 +1,41 @@
-# Default configuration for Satellite-to-UAV Synthetic Flight Video Generation
-# Adjust any range or toggle to vary or limit generated footage parameters.
+# Aviation-Grounded Default Configuration for Satellite-to-UAV Generation (v1.1)
+# Standard Aviation English justification documented in update_logs/2026-11-23_log_004_aviation_parameters_and_engines.md
 
-num_videos: 4
-duration_sec: 5.0
-fps: 24
+num_videos: 100
+duration_sec: 10.0
+fps: 30
+keyframe_interval: 10
+keyframe_format: png
+render_engine: gpu_opengl_raymarch   # Options: gpu_opengl_raymarch | gpu_opengl_mesh | cpu_raymarch
 seed: 42
 
 flight:
-  # Maximum distance (X km) of random flight starting position from the scene origin
-  max_start_offset_km: 1.0
-  # Initial heading along yaw axis (degrees, 0 = North, 90 = East, clockwise)
+  # X = region's maximum geofence radius (110-300 km); set null to automatically use full region geofence
+  max_start_offset_km: null
+  # Yaw heading (degrees true, 0 = North, clockwise)
   yaw_deg_range: [0.0, 360.0]
-  # Flight speed range (meters per second)
-  speed_mps_range: [12.0, 32.0]
-  # Flight altitude range above ground level (meters AGL)
-  altitude_agl_m_range: [90.0, 300.0]
-  # Safety margin kept inside raster boundaries (meters)
+  # Aviation statistical airspeed: Truncated Log-Normal [100 km/h, Mach 1.8 (2205 km/h ISA MSL)]
+  # Mean = 204.0 km/h (110.2 KTAS); Median = 170.0 km/h (Bayraktar TB2 operational reference)
+  use_aviation_distributions: true
+  speed_mps_range: [27.78, 612.53]      # 100 km/h to Mach 1.8 (ISA MSL)
+  # Aviation statistical altitude AGL: Truncated Log-Normal [120 m (400 ft sUAS), 15,240 m (FL500 F-22/HALE)]
+  # Median = 1,631 m (~5,350 ft); Mean = 2,400 m; P90 = 5,316 m (~18,000 ft TB2 ops)
+  altitude_agl_m_range: [120.0, 15240.0]
   boundary_margin_m: 120.0
 
 camera:
-  # #20 (Revised): Vary native output video resolutions only (no digital zoom crop)
+  # #20 (Revised): 4 standard aviation/UAV 16:9 resolutions (NO 4K), equally distributed (25% each)
+  equal_resolution_distribution: true
   resolutions:
-    - [854, 480]     # 480p
-    - [1280, 720]    # 720p
-    - [1920, 1080]   # 1080p
-    # - [3840, 2160] # 4K (uncomment for 4K renders)
-  # Horizontal field of view range (degrees)
-  fov_deg_range: [50.0, 90.0]
-  # Camera gimbal pitch range (degrees: -90 = nadir straight down, -25 = oblique forward)
-  pitch_deg_range: [-85.0, -28.0]
-  # Virtual camera spectral models
+    - [640, 360]     # 360p — Low-bandwidth tactical / LWIR downlink
+    - [854, 480]     # 480p — SD EO/IR downlink
+    - [1280, 720]    # 720p — HD tactical ISR feed
+    - [1920, 1080]   # 1080p — Full HD stabilized EO/IR gimbal
+  # Horizontal FoV: Truncated Normal mu=58 deg, sigma=16 deg, bounds [24, 90] deg
+  # Spans WESCAM MX-15 / ASELSAN CATS wide-mode (24-45 deg) through tactical sUAS wide optics (65-90 deg)
+  fov_deg_range: [24.0, 90.0]
+  # Camera depression/pitch: Truncated Normal mu=-55 deg, sigma=16 deg, bounds [-90, -20] deg
+  pitch_deg_range: [-90.0, -20.0]
   spectral_modes:
     - rgb
     - panchromatic
@@ -46,21 +52,20 @@ camera:
     p2_range: [-0.01, 0.01]
 
 lighting:
-  # Solar azimuth (0=N, 90=E, 180=S, 270=W) and elevation above horizon
+  # Solar azimuth uniform [0, 360); Solar elevation Truncated Normal mu=42 deg, sigma=18 deg, bounds [8, 78] deg
   sun_azimuth_deg_range: [0.0, 360.0]
-  sun_elevation_deg_range: [15.0, 75.0]
-  # Probability of nighttime / low-light lighting condition (also active in night_vision)
+  sun_elevation_deg_range: [8.0, 78.0]
   night_probability: 0.20
-  # DSM ray-casted shadow darkness factor
   shadow_strength_range: [0.25, 0.70]
-  # #16: Color temperature (Kelvin) & green/magenta white balance tint
+  # #16: Color temperature (Kelvin) & white balance tint
   color_temp_k_range: [3600.0, 8200.0]
   wb_tint_range: [-0.07, 0.07]
 
 atmosphere:
-  # #12: Distance- and altitude-dependent atmospheric haze / fog
+  # #12: Mathematical regional climatology + ABL altitude + stochastic weather visibility model
   haze_enabled: true
-  visibility_km_range: [1.8, 22.0]
+  use_mathematical_visibility_model: true
+  visibility_km_range: [0.8, 40.0]
   # #15: Sun glare, lens flare & surface specular glint
   sun_glare_enabled: true
   glare_intensity_range: [0.15, 0.70]
@@ -69,7 +74,7 @@ atmosphere:
 sensor_and_artifacts:
   # #6: Velocity-coupled motion blur & CMOS rolling-shutter skew
   motion_blur_enabled: true
-  shutter_sec_range: [0.004, 0.025]
+  shutter_sec_range: [0.002, 0.018]
   rolling_shutter_strength_range: [0.0, 0.60]
   # #8: Auto-exposure temporal lag & dynamic range clipping
   auto_exposure_enabled: true
@@ -81,5 +86,5 @@ sensor_and_artifacts:
   iso_noise_range: [0.005, 0.040]
   thermal_fpn_range: [0.008, 0.035]
   # Baseline footage defects: lens cracks & water marks / droplets
-  lens_crack_probability: 0.25
-  watermark_droplet_probability: 0.30
+  lens_crack_probability: 0.20
+  watermark_droplet_probability: 0.25

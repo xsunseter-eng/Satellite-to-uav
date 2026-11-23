@@ -9,23 +9,23 @@ A configurable pipeline for generating synthetic Unmanned Aerial Vehicle (UAV) f
 Generate `N` randomized, ground-truth-annotated UAV flight videos around a target geographic origin point across diverse visual and geometric difficulty regimes (deserts, steep canyons, dense urban skylines, industrial river corridors, and arid plateaus) to support aerial perception, cross-view geo-localization, and visual navigation research.
 
 ### Core Generation Capabilities
-1. **Standardized Origin-Centered Input:** Consumes georeferenced overhead imagery (GeoTIFF/COG, RGB+NIR/multispectral) + co-registered 3D elevation (DSM/DTM) within land-focused geofences (`100 km <= radius <= 300 km`), fetched/clipped on demand along flight corridors.
-2. **Randomized Flight Initialization:**
-   - Random starting position (up to `X` km from origin inside the geofence)
-   - Random yaw heading (`0°–360°`)
-   - Random flight speed from a bounded range
-   - Random flight altitude from a bounded range
-3. **Configurable & Limitable Variations:**
-   - **Baseline:** Sun angle, spectral camera models (RGB / Grayscale / NIR / Multispectral / simulated Thermal), FoV angle, camera pitch direction, and footage defects (lens cracks, water marks).
-   - **Extended Sensor & Environment (v1):**
-     - Motion blur & CMOS rolling shutter
-     - Radial/tangential lens distortion (`k1, k2, p1, p2`)
-     - Auto-exposure & dynamic range clipping
-     - Sensor noise (optical ISO/shot noise & thermal FPN)
-     - Atmospheric haze, fog & visibility reduction
-     - Sun glare, lens flare & specular glint
-     - Color temperature & white balance shift
-     - Variable video output resolution (e.g., `480p`, `720p`, `1080p`, `4K`)
+1. **Per-Region Standardized Output Layout:** Each confirmed region (`R1–R6`) outputs into its own directory (`dataset/<REGION_ID>/footage_XXX/`) for `N = 100` sorties (`10.0 s` @ `30 FPS`), generating:
+   - `footage_XXX.mp4` — H.264 video stream across 4 equally stratified resolutions (`360p`, `480p`, `720p`, `1080p`; 25% each, 4K excluded).
+   - `frames/frame_000000.png ...` — Lossless PNG keyframes sampled every 10 frames (`30` PNGs per sortie).
+   - `footage_XXX.xml` — Structured `UAVFootageMetadata` XML document with scene provenance, sensor/atmosphere diagnostics, and per-frame 6-DoF pose telemetry.
+2. **Aeronautical Parameter Distributions (Standard Aviation Justification):**
+   - **Departure Radius (`X`):** Full confirmed region geofence radius (`110–300 km`), fetched on demand via corridor clipping.
+   - **True Airspeed (`100 km/h – Mach 1.8` ISA MSL):** Truncated Log-Normal ($\mu_{\ln}=4.8243,\; \sigma_{\ln}=0.65$) yielding **mean = `204.0 km/h` (110.2 KTAS)** and **median = `170.0 km/h` (91.8 KTAS)** — anchored on the **Bayraktar TB2** MALE UAS operational envelope (`70–120 KTAS`), spanning continuously from small/amateur sUAS (`100 km/h`) up to **F-22 Raptor** supercruise (`Mach 1.8`).
+   - **Altitude AGL (`120 m – 15,240 m`):** Truncated Log-Normal ($\mu_{\ln}=7.4046,\; \sigma_{\ln}=0.95$; median `1,631 m` / `~5,350 ft`, P90 `5,316 m` / `~17,440 ft`), spanning FAA/EASA sUAS ceiling (`400 ft AGL`) through **Bayraktar TB2** operational altitudes (`~18,000 ft`) up to HALE/fighter flight levels (`FL500`).
+   - **Horizontal FoV (`24°–90°`, $\mu=58^\circ, \sigma=16^\circ$):** Calibrated against airborne EO/IR turrets (**ASELSAN CATS**, **WESCAM MX-15**, **Sniper ATP** wide modes `24°–45°`) and tactical sUAS EO optics (**DJI Zenmuse / Skydio** `60°–90°`).
+   - **Camera Depression / Pitch (`-90° to -20°`, $\mu=-55^\circ, \sigma=16^\circ$):** Centered on operational ISR oblique depression while retaining nadir mapping coverage.
+   - **Solar Elevation (`8°–78°`, $\mu=42^\circ, \sigma=18^\circ$)** & uniform azimuth `[0°, 360°)` + nocturnal sortie probability.
+   - **Mathematical Visibility & Haze Model (`#12`):** Combines Köppen-Geiger regional climatological visibility $V_0(r)$, Atmospheric Boundary Layer exponential altitude clearing ($H_{\text{scale}} = 1,800\text{ m}$), and stochastic log-normal + adverse fog/dust chance events, integrated via Koschmieder's law along per-pixel 3D slant depth.
+3. **Multi-Engine 3D DSM Rendering & Sensor Effects:**
+   - Primary GPU engine: **`gpu_opengl_raymarch`** (Headless NVIDIA EGL OpenGL 3.30 3D DSM ray-marcher with 16× anisotropic mipmapping and native Brown-Conrady lens distortion `#7`), plus **`gpu_opengl_mesh`** (3D triangle mesh rasterizer) and **`cpu_raymarch`** fallback.
+   - 6 spectral camera models (`rgb`, `panchromatic`, `nir`, `false_color_cir`, `thermal_lwir`, `night_vision`), plus motion blur & rolling shutter (`#6`), auto-exposure & DR clipping (`#8`), optical ISO & thermal FPN noise (`#9`), sun glare & specular glint (`#15`), Kelvin color temperature & WB (`#16`), lens cracks, and water droplets.
+
+*(Full aviation derivations and equations are documented in [`update_logs/2026-11-23_log_004_aviation_parameters_and_engines.md`](update_logs/2026-11-23_log_004_aviation_parameters_and_engines.md).)*
 
 ---
 

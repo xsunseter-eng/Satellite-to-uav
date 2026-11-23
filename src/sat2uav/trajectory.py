@@ -9,6 +9,13 @@ from typing import Any
 import numpy as np
 
 from .config import GenerationConfig, VideoSampleParams, sample_video_params
+from .distributions import (
+    pick_equal_resolution,
+    sample_airspeed_kmh,
+    sample_altitude_agl_m,
+    sample_fov_deg,
+    sample_pitch_deg,
+)
 from .scene import SceneBundle
 
 
@@ -106,7 +113,18 @@ def sample_valid_flight(
     b_ymax = scene.y_max_m - edge_pad
 
     max_scene_r = 0.45 * min(b_xmax - b_xmin, b_ymax - b_ymin)
-    max_offset_m = min(cfg.flight.max_start_offset_km * 1000.0, max(20.0, max_scene_r))
+    cfg_offset_m = (
+        max_scene_r
+        if cfg.flight.max_start_offset_km is None
+        else cfg.flight.max_start_offset_km * 1000.0
+    )
+    max_offset_m = min(cfg_offset_m, max(20.0, max_scene_r))
+    res = (
+        pick_equal_resolution(video_index, cfg.camera.resolutions)
+        if cfg.camera.equal_resolution_distribution
+        else cfg.camera.resolutions[int(rng.integers(0, len(cfg.camera.resolutions)))]
+    )
+    aspect = res[0] / float(res[1])
 
     best_choice: tuple[float, float, float, float, float, float, float, float, tuple[int, int]] | None = None
 
@@ -118,12 +136,20 @@ def sample_valid_flight(
         sy = scene.origin_y_m + r * math.sin(theta)
 
         yaw_deg = float(rng.uniform(*cfg.flight.yaw_deg_range)) % 360.0
-        speed_mps = float(rng.uniform(*cfg.flight.speed_mps_range))
-        altitude_agl_m = float(rng.uniform(*cfg.flight.altitude_agl_m_range))
-        fov_deg = float(rng.uniform(*cfg.camera.fov_deg_range))
-        pitch_deg = float(rng.uniform(*cfg.camera.pitch_deg_range))
-        res = cfg.camera.resolutions[int(rng.integers(0, len(cfg.camera.resolutions)))]
-        aspect = res[0] / float(res[1])
+        if cfg.flight.use_aviation_distributions:
+            speed_mps = sample_airspeed_kmh(
+                rng,
+                cfg.flight.speed_mps_range[0] * 3.6,
+                cfg.flight.speed_mps_range[1] * 3.6,
+            ) / 3.6
+            altitude_agl_m = sample_altitude_agl_m(rng, *cfg.flight.altitude_agl_m_range)
+            fov_deg = sample_fov_deg(rng, *cfg.camera.fov_deg_range)
+            pitch_deg = sample_pitch_deg(rng, *cfg.camera.pitch_deg_range)
+        else:
+            speed_mps = float(rng.uniform(*cfg.flight.speed_mps_range))
+            altitude_agl_m = float(rng.uniform(*cfg.flight.altitude_agl_m_range))
+            fov_deg = float(rng.uniform(*cfg.camera.fov_deg_range))
+            pitch_deg = float(rng.uniform(*cfg.camera.pitch_deg_range))
 
         yaw_rad = math.radians(yaw_deg)
         ex = sx + speed_mps * math.sin(yaw_rad) * cfg.duration_sec
@@ -144,13 +170,19 @@ def sample_valid_flight(
         sx, sy = scene.origin_x_m, scene.origin_y_m
         r = 0.0
         yaw_deg = float(rng.uniform(*cfg.flight.yaw_deg_range)) % 360.0
-        res = cfg.camera.resolutions[int(rng.integers(0, len(cfg.camera.resolutions)))]
-        fov_deg = min(float(rng.uniform(*cfg.camera.fov_deg_range)), 68.0)
+        fov_deg = min(float(rng.uniform(*cfg.camera.fov_deg_range)), 62.0)
         pitch_deg = min(float(rng.uniform(*cfg.camera.pitch_deg_range)), -62.0)
         max_span = min(scene_w, scene_h)
-        altitude_agl_m = min(float(rng.uniform(*cfg.flight.altitude_agl_m_range)), max_span * 0.22)
+        altitude_agl_m = min(
+            sample_altitude_agl_m(rng, *cfg.flight.altitude_agl_m_range)
+            if cfg.flight.use_aviation_distributions
+            else float(rng.uniform(*cfg.flight.altitude_agl_m_range)),
+            max_span * 0.28,
+        )
         speed_mps = min(
-            float(rng.uniform(*cfg.flight.speed_mps_range)),
+            (sample_airspeed_kmh(rng) / 3.6)
+            if cfg.flight.use_aviation_distributions
+            else float(rng.uniform(*cfg.flight.speed_mps_range)),
             max(2.0, (max_span * 0.18) / max(cfg.duration_sec, 0.5)),
         )
         best_choice = (sx, sy, r, yaw_deg, speed_mps, altitude_agl_m, fov_deg, pitch_deg, res)
@@ -166,6 +198,7 @@ def sample_valid_flight(
         yaw_deg=yaw_deg,
         speed_mps=speed_mps,
         altitude_agl_m=altitude_agl_m,
+        region_id=scene.metadata.get("region_id"),
     )
     # Apply the exact frustum-verified camera geometry
     params.fov_deg = float(fov_deg)
