@@ -19,6 +19,7 @@ real_footages/
 *.jp2
 *.ecw
 *.mp4
+!docs/assets/*.mp4
 *.avi
 *.mkv
 
